@@ -14,11 +14,37 @@ import android.widget.Toast
 object Launch {
     const val MAPS = "com.google.android.apps.maps"
 
-    enum class Mode { FULL, ADJACENT, WINDOW }
+    /** FULL = hele skjermen, RIGHT_THIRD = vindu i høyre tredjedel, ADJACENT = Androids delte skjerm, WINDOW = flytende vindu. */
+    enum class Mode(val label: String) { FULL("Fullskjerm"), RIGHT_THIRD("Høyre ⅓"), ADJACENT("Delt skjerm"), WINDOW("Vindu") }
+
+    /** Valgt standard for hvordan apper åpnes (velges øverst i app-oversikten). */
+    fun defaultMode(ctx: Context): Mode =
+        runCatching { Mode.valueOf(ctx.prefs().getString("openMode", "FULL")!!) }.getOrDefault(Mode.FULL)
+
+    fun setDefaultMode(ctx: Context, m: Mode) = ctx.prefs().edit().putString("openMode", m.name).apply()
+
+    /**
+     * Om skjermen støtter frie vinduer (desktop-/vindusmodus). Uten dette ignorerer Android
+     * vindusstørrelsen, og «Høyre ⅓» faller tilbake til delt skjerm.
+     */
+    fun windowsSupported(ctx: Context): Boolean =
+        ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_FREEFORM_WINDOW_MANAGEMENT) ||
+            runCatching { android.provider.Settings.Global.getInt(ctx.contentResolver, "enable_freeform_support", 0) != 0 }.getOrDefault(false)
 
     private fun prepare(ctx: Context, i: Intent, mode: Mode): android.os.Bundle? {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (mode == Mode.ADJACENT) i.addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        if (mode == Mode.RIGHT_THIRD) {
+            val dm = ctx.resources.displayMetrics
+            if (!windowsSupported(ctx)) {
+                // Ingen vindusmodus: bruk Androids delte skjerm (skillelinjen kan dras til ⅓)
+                i.addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+                return null
+            }
+            i.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            val left = dm.widthPixels * 2 / 3
+            return ActivityOptions.makeBasic().setLaunchBounds(Rect(left, 0, dm.widthPixels, dm.heightPixels)).toBundle()
+        }
         if (mode == Mode.WINDOW) {
             i.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             val dm = ctx.resources.displayMetrics

@@ -62,7 +62,7 @@ class AppsPanel(ctx: Context) : ScopedFrame(ctx) {
         clipToPadding = false
         selector = ColorDrawable(Color.TRANSPARENT)
         adapter = this@AppsPanel.adapter
-        setOnItemClickListener { _, _, i, _ -> Launch.app(context, apps[i].component, Launch.Mode.FULL) }
+        setOnItemClickListener { _, _, i, _ -> Launch.app(context, apps[i].component, Launch.defaultMode(context)) }
         setOnItemLongClickListener { _, v, i, _ -> menu(v, apps[i]); true }
     }
 

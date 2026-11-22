@@ -314,7 +314,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
             }
         }
         favGlass.clear()
-        val pills = favs.map { f -> favPill(f.icon, f.label, false, { Launch.app(context, f.cn, Launch.Mode.FULL) }) { v -> favMenu(v, f.cn) } }.toMutableList()
+        val pills = favs.map { f -> favPill(f.icon, f.label, false, { Launch.app(context, f.cn, Launch.defaultMode(context)) }) { v -> favMenu(v, f.cn) } }.toMutableList()
         if (favs.size < 6) pills += favPill(context.getDrawable(R.drawable.ic_add), "Legg til", true, { actions.openApps() }, null)
         favPills = pills
         layoutFavGrid()

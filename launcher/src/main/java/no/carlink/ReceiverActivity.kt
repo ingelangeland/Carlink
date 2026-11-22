@@ -35,6 +35,7 @@ class ReceiverActivity : AppCompatActivity() {
 
     private lateinit var split: SplitLayout
     private lateinit var home: HomeView
+    private lateinit var drawer: AppDrawer
     private lateinit var rail: View
     private lateinit var statusDot: View
     private lateinit var statusText: TextView
@@ -58,7 +59,10 @@ class ReceiverActivity : AppCompatActivity() {
 
         // Lag 1: albumcoveret over hele skjermen. Lag 2: meny + innhold (hjem eller delt skjerm).
         val frame = FrameLayout(this).apply { setBackgroundColor(C.BG) }
-        frame.addView(ArtBackground(this), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        // «content» = alt som blir uskarpt bak app-oversikten
+        val content = FrameLayout(this)
+        frame.addView(content, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        content.addView(ArtBackground(this), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         val root = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         rail = buildRail()
         root.addView(rail, LinearLayout.LayoutParams(88.dp, LinearLayout.LayoutParams.MATCH_PARENT))
@@ -71,7 +75,7 @@ class ReceiverActivity : AppCompatActivity() {
         home = HomeView(this, object : HomeView.Actions {
             override fun openMap() = setLayout(listOf(PaneType.MAP))
             override fun openMusic() = setLayout(listOf(PaneType.MUSIC))
-            override fun openApps() = setLayout(listOf(PaneType.APPS))
+            override fun openApps() = drawer.open()
             override fun openSplit() {
                 if (panes.size < 2) setLayout(listOf(PaneType.MAP, PaneType.MUSIC, PaneType.APPS)) else showSplit()
             }
@@ -79,11 +83,15 @@ class ReceiverActivity : AppCompatActivity() {
         })
         stack.addView(home, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         root.addView(stack, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
-        frame.addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        content.addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        drawer = AppDrawer(this, content)
+        frame.addView(drawer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         setContentView(frame)
 
         // Som hjemmeskjerm skal «tilbake» ikke lukke appen.
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) { override fun handleOnBackPressed() {} })
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { if (drawer.isOpen) drawer.close() }
+        })
 
         loadState()
         if (prefs().getString("mode", "home") == "home") showHome() else showSplit()
@@ -133,7 +141,7 @@ class ReceiverActivity : AppCompatActivity() {
         rail.addView(railItem(R.drawable.ic_home, "Hjem") { showHome() })
         rail.addView(railItem(R.drawable.ic_map, "Kart") { setLayout(listOf(PaneType.MAP)) })
         rail.addView(railItem(R.drawable.ic_music, "Musikk") { setLayout(listOf(PaneType.MUSIC)) })
-        rail.addView(railItem(R.drawable.ic_grid, "Apper") { setLayout(listOf(PaneType.APPS)) })
+        rail.addView(railItem(R.drawable.ic_grid, "Apper") { drawer.open() })
         rail.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
 
         rail.addView(label("DELT", 10f, C.SUB, true).apply { gravity = Gravity.CENTER })
@@ -238,7 +246,7 @@ class ReceiverActivity : AppCompatActivity() {
     /** Hjem-knappen på enheten tar deg alltid tilbake til hjemmeskjermen. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.hasCategory(Intent.CATEGORY_HOME)) showHome()
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) { drawer.close(); showHome() }
         handleIntent(intent)
     }
 
@@ -250,12 +258,14 @@ class ReceiverActivity : AppCompatActivity() {
         if (i.getBooleanExtra("demo", false)) DemoFeeder.start(this)
         val show = i.getStringExtra("show") ?: return
         DemoFeeder.showNav = show == "nav"
+        if (show != "drawer" && ::drawer.isInitialized) drawer.close(immediate = true)
         when (show) {
             "home", "nav" -> showHome()
             "split" -> setLayout(listOf(PaneType.MAP, PaneType.MUSIC, PaneType.APPS))
             "map" -> setLayout(listOf(PaneType.MAP))
             "music" -> setLayout(listOf(PaneType.MUSIC))
             "apps" -> setLayout(listOf(PaneType.APPS))
+            "drawer" -> { showHome(); drawer.open() }
         }
     }
 
