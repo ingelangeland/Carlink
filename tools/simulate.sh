@@ -12,8 +12,17 @@ mkdir -p "$OUT"
 L=no.carlink.launcher/no.carlink.ReceiverActivity
 S=no.carlink.sender/no.carlink.SenderActivity
 
-if [ "$SIM" = "21x9" ]; then DENS=240; DIV_X=925; DIV_Y=412; NEXT_X=280; NEXT_Y=730; GAP_X=792;  GAP_Y=357
-else                         DENS=320; DIV_X=950; DIV_Y=540; NEXT_X=374; NEXT_Y=956; GAP_X=1072; GAP_Y=345; fi
+# Koordinater regnes ut fra skjermstørrelse og tetthet (dp → piksler)
+DENS="${DENS:-240}"
+read W H < <(timeout 30 "$ADB_BIN" shell wm size | tail -1 | sed 's/.*: //; s/x/ /')
+dp() { awk -v d="$1" -v s="$DENS" 'BEGIN{printf "%d", d*s/160}'; }
+# Skillelinjen mellom panel 1 og 2 i delt visning (meny 88dp, marg 10dp, 45 % / 30 % / 25 %)
+DIV_X=$(awk -v W="$W" -v s="$DENS" 'BEGIN{k=s/160; avail=W-(88+20)*k-2*14*k; printf "%d", (98)*k + 0.45*avail + 7*k}')
+DIV_Y=$((H / 2))
+# «Neste låt» i musikklinjen
+NEXT_X=$(dp 187); NEXT_Y=$((H - $(dp 62)))
+# Trykk utenfor app-oversikten (nederst til venstre)
+OUT_X=$(dp 30); OUT_Y=$((H - $(dp 20)))
 
 shot() {
   sleep "$2"
@@ -27,12 +36,24 @@ adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell svc power stayon true
 adb shell wm density "$DENS"
+echo "Skjerm: ${W}x${H} @ ${DENS} dpi"
 adb shell input keyevent 82
 adb shell wm size
 
 # Diagnose: skjermbilde av vanlig Android før CarLink startes, og fortløpende systemlogg
 "$ADB_BIN" logcat -v time > "$OUT/logcat-stream.txt" 2>&1 &
 shot 00-for-carlink 2
+
+if [ "$SIM" = "telefon" ]; then
+  adb install -r -g ut/CarLink-Sender-telefon.apk
+  adb shell am start -W -n "$S" > /dev/null
+  shot 01-sender 6
+  adb shell input swipe 540 1800 540 600 400
+  shot 02-sender-rullet 3
+  adb shell dumpsys meminfo no.carlink.sender > "$OUT/minne-telefon.txt"
+  { echo "CarLink Sender på telefon (S24 Ultra-lik skjerm)"; grep -m1 "TOTAL PSS" "$OUT/minne-telefon.txt"; } > "$OUT/RAPPORT-$SIM.txt"
+  exit 0
+fi
 
 echo "== Installerer"
 adb install -r -g ut/CarLink-bilskjerm.apk
@@ -48,10 +69,8 @@ go map;   shot 06-kart 15
 go music; shot 07-musikk 5
 go apps;  shot 08-apper-panel 5
 go drawer; shot 08b-appoversikt 4
-# Trykk mellom to apper (skal IKKE lukke), så trykk i hjørnet utenfor (skal lukke → hjemmeskjerm)
-adb shell input tap $GAP_X $GAP_Y
-          shot 08c-trykk-mellom-apper 2
-adb shell input tap 80 760
+# Trykk i hjørnet utenfor (skal lukke → hjemmeskjerm)
+adb shell input tap $OUT_X $OUT_Y
           shot 08d-trykk-utenfor 2
 go home;  sleep 4
 adb shell input tap $NEXT_X $NEXT_Y      # «neste låt» i musikklinjen → nytt cover og nye farger
@@ -65,11 +84,6 @@ adb shell dumpsys gfxinfo no.carlink.launcher > "$OUT/grafikk.txt"
 adb shell top -b -d 5 -n 2 -o PID,%CPU,%MEM,RES,NAME | grep -E "carlink|PID" | tail -4 > "$OUT/cpu.txt"
 adb shell dumpsys meminfo no.carlink.launcher > "$OUT/minne-bilskjerm.txt"
 
-if [ "$SIM" = "16x9" ]; then
-  adb shell am start -W -n "$S" > /dev/null
-  shot 10-telefon-sender 6
-  adb shell dumpsys meminfo no.carlink.sender > "$OUT/minne-telefon.txt"
-fi
 
 adb logcat -d > "$OUT/logcat.txt"
 {

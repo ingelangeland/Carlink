@@ -70,8 +70,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { sim: "21x9", skin: "1920x824",  gpu: "swiftshader_indirect", tag: "", extra: "" }
-          - { sim: "16x9", skin: "1920x1080", gpu: "swiftshader_indirect", tag: "", extra: "" }
+          # Bilskjermen: 1920x720 med to vanlige tettheter, og telefonen (S24 Ultra-lik)
+          - { sim: "bil-240dpi", skin: "1920x720",  dens: "240", gpu: "swiftshader_indirect", tag: "", extra: "" }
+          - { sim: "bil-160dpi", skin: "1920x720",  dens: "160", gpu: "swiftshader_indirect", tag: "", extra: "" }
+          - { sim: "telefon",    skin: "1080x2340", dens: "450", gpu: "swiftshader_indirect", tag: "", extra: "" }
     steps:
       - uses: actions/checkout@v4
 
@@ -90,6 +92,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           SIM: ${{ matrix.sim }}
+          DENS: ${{ matrix.dens }}
           TAG: ${{ matrix.tag }}
           EXTRA: ${{ matrix.extra }}
         with:

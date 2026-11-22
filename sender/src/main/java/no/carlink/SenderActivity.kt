@@ -36,6 +36,7 @@ class SenderActivity : AppCompatActivity() {
 
     private lateinit var statusTv: TextView
     private lateinit var notifBtn: TextView
+    private lateinit var batteryBtn: TextView
     private lateinit var spinner: Spinner
     private lateinit var hotspot: CheckBox
     private lateinit var cover: ImageView
@@ -69,6 +70,9 @@ class SenderActivity : AppCompatActivity() {
         col.section("1 · Tilgang til musikk og navigasjon")
         notifBtn = pill("Gi tilgang til musikk og navigasjon") { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
         col.addView(notifBtn, wrap())
+        batteryBtn = pill("Tillat at CarLink kjører i bakgrunnen") { askBattery() }
+        col.addView(batteryBtn, wrap(8))
+        col.addView(label("Samsung: velg også «Ubegrenset» under Innstillinger → Apper → CarLink Sender → Batteri.", 12f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) })
 
         col.section("2 · Velg skjermen (paret via Bluetooth)")
         spinner = Spinner(this).apply { background = rounded(C.PANEL, 14); setPadding(8.dp, 8.dp, 8.dp, 8.dp) }
@@ -165,6 +169,9 @@ class SenderActivity : AppCompatActivity() {
         val ok = MediaListener.isEnabled(this)
         notifBtn.text = if (ok) "✓ Tilgang til musikk og navigasjon gitt" else "Gi tilgang til musikk og navigasjon"
         notifBtn.background = rounded(if (ok) C.PANEL2 else C.WARN, 22)
+        val bat = batteryOk()
+        batteryBtn.text = if (bat) "✓ Kan kjøre i bakgrunnen" else "Tillat at CarLink kjører i bakgrunnen"
+        batteryBtn.background = rounded(if (bat) C.PANEL2 else C.WARN, 22)
         loadDevices()
     }
 
@@ -189,6 +196,20 @@ class SenderActivity : AppCompatActivity() {
         val addr = devices[i].second
         prefs().edit().putString("btAddr", addr).putBoolean("hotspot", hotspot.isChecked).apply()
         LinkService.startSender(this, addr, hotspot.isChecked)
+    }
+
+    private fun batteryOk() = getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
+    @SuppressLint("BatteryLife")
+    private fun askBattery() {
+        if (batteryOk()) {
+            // Allerede tillatt: åpne appens innstillinger (Samsung: Batteri → Ubegrenset)
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")))
+            return
+        }
+        runCatching {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:$packageName")))
+        }.onFailure { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
     }
 
     private fun toggleAudio() {
