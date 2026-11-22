@@ -56,6 +56,12 @@ if [ "$SIM" = "telefon" ]; then
   exit 0
 fi
 
+# Test av veidata-tjenestene direkte fra maskinen (skiller nettverk fra app)
+Q='[out:json][timeout:12];way(around:800,59.9139,10.7522)["highway"~"^(primary|secondary|tertiary|residential)$"];out tags geom qt;'
+for S in https://overpass.kumi.systems/api/interpreter https://overpass-api.de/api/interpreter; do
+  echo "$S: $(curl -s -m 40 -o /dev/null -w '%{http_code} %{time_total}s %{size_download}B' --data-urlencode "data=$Q" -A 'CarLink/1.0' $S)" >> "$OUT/veitest.txt"
+done
+
 echo "== Installerer"
 adb install -r -g ut/CarLink-bilskjerm.apk
 adb install -r -g ut/CarLink-Sender-telefon.apk
@@ -77,7 +83,7 @@ OUT_X=$(dp 30); OUT_Y=$((H - $(dp 20)))
 
           shot 02-hjem-litt-senere 3
 go nav;   shot 03-hjem-navigasjon 14
-          shot 03b-hjem-navigasjon-senere 20
+          shot 03b-hjem-navigasjon-senere 45
 adb logcat -d -s CarLinkRoads:* > "$OUT/veier.txt" 2>&1 || true
 go split; shot 04-delt-skjerm 15
 adb shell input swipe $DIV_X $DIV_Y $((DIV_X-280)) $DIV_Y 900
@@ -183,7 +189,7 @@ adb logcat -d > "$OUT/logcat.txt"
   echo; echo "Minne (TOTAL PSS i kB):"
   echo -n "  bilskjerm: "; grep -m1 "TOTAL PSS" "$OUT/minne-bilskjerm.txt" || true
   [ -f "$OUT/minne-telefon.txt" ] && { echo -n "  telefon:   "; grep -m1 "TOTAL PSS" "$OUT/minne-telefon.txt"; }
-  echo; echo "Minikart (veier):"; tail -4 "$OUT/veier.txt" 2>/dev/null
+  echo; echo "Minikart (veier):"; tail -4 "$OUT/veier.txt" 2>/dev/null; cat "$OUT/veitest.txt" 2>/dev/null
   echo; echo "Skjermskalering:"; cat "$OUT/ui.txt" 2>/dev/null | tail -6
   echo; echo "APK-størrelser:"; ls -l ut/*.apk | awk '{printf "  %s  %.1f MB\n", $9, $5/1048576}'
 } > "$OUT/RAPPORT-$SIM$TAG.txt"
