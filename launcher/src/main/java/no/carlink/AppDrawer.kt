@@ -5,21 +5,16 @@ import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.RenderEffect
 import android.graphics.Shader
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
-import android.widget.BaseAdapter
 import android.widget.FrameLayout
-import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
@@ -54,34 +49,14 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
     private val panel = LinearLayout(ctx)
     private val modeRow = LinearLayout(ctx)
     private val hint = ctx.label("", 12f, 0xCCFFFFFF.toInt()).apply { gravity = Gravity.CENTER }
-    private val grid = GridView(ctx)
+    private val scroll = android.widget.ScrollView(ctx)
+    private val rowsBox = LinearLayout(ctx)
+    private var lastCols = -1
     private var apps: List<App> = emptyList()
     private var anim: ValueAnimator? = null
     private var progress = 0f
     private val colW = 112.dp
     private val rowH = 118.dp
-
-    private val adapter = object : BaseAdapter() {
-        override fun getCount() = apps.size
-        override fun getItem(i: Int) = apps[i]
-        override fun getItemId(i: Int) = i.toLong()
-        override fun getView(i: Int, convert: View?, parent: ViewGroup?): View {
-            val v = (convert as? LinearLayout) ?: LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(6.dp, 12.dp, 6.dp, 10.dp)
-                addView(ImageView(context), LinearLayout.LayoutParams(64.dp, 64.dp))
-                addView(context.label("", 13f, 0xFFFFFFFF.toInt()).apply {
-                    maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER
-                    setPadding(0, 8.dp, 0, 0); setShadowLayer(8f, 0f, 1f, 0x99000000.toInt())
-                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            }
-            val a = apps[i]
-            (v.getChildAt(0) as ImageView).setImageDrawable(a.icon)
-            (v.getChildAt(1) as TextView).text = a.label
-            return v
-        }
-    }
 
     init {
         visibility = GONE
@@ -96,25 +71,22 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
         modeRow.gravity = Gravity.CENTER
         panel.addView(modeRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         panel.addView(hint, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 6.dp })
-        grid.apply {
-            numColumns = GridView.AUTO_FIT
-            columnWidth = colW
-            stretchMode = GridView.STRETCH_SPACING_UNIFORM
-            gravity = Gravity.CENTER
-            selector = ColorDrawable(Color.TRANSPARENT)
+        rowsBox.orientation = LinearLayout.VERTICAL
+        scroll.apply {
             isVerticalScrollBarEnabled = false
-            adapter = this@AppDrawer.adapter
-            setOnItemClickListener { _, _, i, _ -> openApp(apps[i], Launch.defaultMode(context)) }
-            setOnItemLongClickListener { _, v, i, _ -> appMenu(v, apps[i]); true }
+            isVerticalFadingEdgeEnabled = true          // mange apper: toner mykt ut i bunnen når man ruller
+            setFadingEdgeLength(48.dp)
+            overScrollMode = OVER_SCROLL_NEVER
+            addView(rowsBox, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
-        panel.addView(grid, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { topMargin = 14.dp })
+        panel.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { topMargin = 14.dp })
         addView(panel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         buildModeRow()
     }
 
     override fun onStart(scope: CoroutineScope) {
         scope.launch { Ambient.theme.collect { applyTheme(it) } }
-        scope.launch { Favorites.changed.collect { if (isOpen) adapter.notifyDataSetChanged() } }
+
     }
 
     // ------------------------------------------------------------------ åpne / lukke
@@ -179,17 +151,43 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
         styleModeRow(t)
     }
 
-    /** Rutenettet sentreres og får bare så mange rader som trengs (maks ca. 70 % av høyden). */
+    /**
+     * Appene legges i rader som hver er sentrert (også den siste, ufullstendige raden).
+     * Bruker opptil 88 % av bredden og 72 % av høyden; flere apper enn det → rulling.
+     */
     private fun layoutGrid() {
         if (width == 0 || apps.isEmpty()) return
-        val maxW = min((width * 0.78f).toInt(), 1100.dp)
+        val maxW = min((width * 0.88f).toInt(), 1400.dp)
         val cols = max(1, min(apps.size, maxW / colW))
-        val panelW = cols * colW + 24.dp
+        val panelW = cols * colW
         val rows = ceil(apps.size / cols.toFloat()).toInt()
-        val gridH = min(rows * rowH, (height * 0.68f).toInt())
+        val boxH = min(rows * rowH, (height * 0.72f).toInt())
         (panel.layoutParams as LayoutParams).width = panelW
-        (grid.layoutParams as LinearLayout.LayoutParams).height = gridH
+        (scroll.layoutParams as LinearLayout.LayoutParams).height = boxH
+        if (cols != lastCols || rowsBox.childCount != rows) {
+            lastCols = cols
+            rowsBox.removeAllViews()
+            apps.chunked(cols).forEach { chunk ->
+                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+                chunk.forEach { a -> row.addView(appTile(a), LinearLayout.LayoutParams(colW, rowH)) }
+                rowsBox.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            }
+        }
         panel.requestLayout()
+    }
+
+    private fun appTile(a: App): View = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(6.dp, 12.dp, 6.dp, 10.dp)
+        addView(ImageView(context).apply { setImageDrawable(a.icon) }, LinearLayout.LayoutParams(64.dp, 64.dp))
+        addView(context.label(a.label, 13f, 0xFFFFFFFF.toInt()).apply {
+            maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER
+            setPadding(0, 8.dp, 0, 0); setShadowLayer(8f, 0f, 1f, 0x99000000.toInt())
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        isClickable = true
+        setOnClickListener { openApp(a, Launch.defaultMode(context)) }
+        setOnLongClickListener { v -> appMenu(v, a); true }
     }
 
     private fun buildModeRow() {
@@ -236,7 +234,7 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
                     .map { App(it.loadLabel(pm).toString(), ComponentName(it.activityInfo.packageName, it.activityInfo.name), it.loadIcon(pm)) }
                     .sortedBy { it.label.lowercase() }
             }
-            adapter.notifyDataSetChanged()
+            lastCols = -1
             layoutGrid()
         }
     }
