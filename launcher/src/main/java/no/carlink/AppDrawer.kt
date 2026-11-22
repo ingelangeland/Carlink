@@ -80,6 +80,10 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
             addView(rowsBox, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
         panel.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { topMargin = 14.dp })
+        // Trykk i selve app-området (mellom appene, rundt valgknappene) skal IKKE lukke – bare trykk utenfor
+        panel.isClickable = true
+        rowsBox.isClickable = true
+        modeRow.isClickable = true
         addView(panel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         buildModeRow()
     }

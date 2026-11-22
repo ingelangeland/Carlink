@@ -48,6 +48,11 @@ go map;   shot 06-kart 15
 go music; shot 07-musikk 5
 go apps;  shot 08-apper-panel 5
 go drawer; shot 08b-appoversikt 4
+# Trykk mellom to apper (skal IKKE lukke), så trykk i hjørnet utenfor (skal lukke → hjemmeskjerm)
+adb shell input tap 960 470
+          shot 08c-trykk-mellom-apper 2
+adb shell input tap 80 760
+          shot 08d-trykk-utenfor 2
 go home;  sleep 4
 adb shell input tap $NEXT_X $NEXT_Y      # «neste låt» i musikklinjen → nytt cover og nye farger
           shot 09-hjem-neste-lat 6
