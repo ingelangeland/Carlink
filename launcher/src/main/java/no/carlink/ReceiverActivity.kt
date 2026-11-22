@@ -119,11 +119,12 @@ class ReceiverActivity : AppCompatActivity() {
         }
         rail.addView(TextClock(this).apply {
             format24Hour = "HH:mm"; format12Hour = "HH:mm"; setTextColor(C.TEXT); textSize = 19f
+            gravity = Gravity.CENTER
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         statusDot = View(this).apply { background = rounded(C.WARN, 6) }
         rail.addView(statusDot, LinearLayout.LayoutParams(12.dp, 12.dp).apply { topMargin = 8.dp })
-        statusText = label("", 10f, C.SUB)
+        statusText = label("", 10f, C.SUB).apply { gravity = Gravity.CENTER }
         rail.addView(statusText)
 
         rail.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
@@ -133,7 +134,7 @@ class ReceiverActivity : AppCompatActivity() {
         rail.addView(railItem(R.drawable.ic_grid, "Apper") { setLayout(listOf(PaneType.APPS)) })
         rail.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
 
-        rail.addView(label("DELT", 10f, C.SUB, true))
+        rail.addView(label("DELT", 10f, C.SUB, true).apply { gravity = Gravity.CENTER })
         for (n in 1..3) {
             val b = label("$n", 15f, C.TEXT, true).apply {
                 gravity = Gravity.CENTER
@@ -154,7 +155,7 @@ class ReceiverActivity : AppCompatActivity() {
         isClickable = true
         setOnClickListener { click() }
         addView(ImageView(context).apply { setImageResource(icon); setColorFilter(C.TEXT) }, LinearLayout.LayoutParams(30.dp, 30.dp))
-        addView(context.label(text, 11f, C.SUB))
+        addView(context.label(text, 11f, C.SUB).apply { gravity = Gravity.CENTER })
     }
 
     // ------------------------------------------------------------- paneler
@@ -202,7 +203,9 @@ class ReceiverActivity : AppCompatActivity() {
     private fun applyChromeTheme(t: Ambient.Theme) {
         rail.setBackgroundColor(Ambient.alpha(t.dark, 0xCC))
         for (i in 0 until split.childCount) {
-            split.getChildAt(i).background = rounded(Ambient.alpha(t.dark, 0xBF), 22, Ambient.alpha(t.accent, 0x30))
+            val pane = split.getChildAt(i)
+            pane.background = rounded(Ambient.alpha(t.dark, 0xBF), 22, Ambient.alpha(t.accent, 0x30))
+            (pane as? PaneView)?.accent = t.accent
         }
         countButtons.forEachIndexed { i, b ->
             b.background = rounded(if (i + 1 == panes.size) t.accent else Ambient.alpha(0xFFFFFFFF.toInt(), 0x1F), 10)

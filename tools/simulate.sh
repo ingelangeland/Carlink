@@ -23,22 +23,23 @@ adb shell dumpsys package no.carlink.launcher | grep -m1 versionName
 adb logcat -c
 
 # ---------- 21:9 bilskjerm (2520x1080)
-adb shell wm size 2520x1080
-adb shell wm density 320
+adb shell wm size 1920x823
+adb shell wm density 240
 sleep 3
 go home;  shot 01-hjem-21x9 12
           shot 02-hjem-21x9-litt-senere 3
 go nav;   shot 03-hjem-21x9-navigasjon 5
 go split; shot 04-delt-skjerm-3-paneler 15
 # Dra skillelinjen mellom kart og musikk mot venstre (test av dra-funksjonen)
-adb shell input swipe 1230 560 860 560 900
+adb shell input swipe 925 430 640 430 900
           shot 05-delt-skjerm-etter-dra 3
 go map;   shot 06-kart 12
 go music; shot 07-musikk 5
 go apps;  shot 08-apper 5
 # Trykk spill/pause i musikkvisningen er dekket av demo; neste låt via hjem → bytter cover/farger
 go home;  sleep 3
-adb shell input keyevent KEYCODE_MEDIA_NEXT
+# «Neste låt» med knappen i musikklinjen (nederst til venstre)
+adb shell input tap 280 735
           shot 09-hjem-21x9-ny-lat 6
 
 echo "== Ytelse på hjemmeskjermen (21:9, demo med musikk og lydbølger)"
@@ -51,6 +52,7 @@ adb shell dumpsys meminfo no.carlink.launcher > "$OUT/minne-bilskjerm.txt"
 
 # ---------- 16:9
 adb shell wm size 1920x1080
+adb shell wm density 320
 sleep 3
 go home;  shot 10-hjem-16x9 10
 

@@ -18,6 +18,9 @@ class PaneView(
 
     var type: PaneType = initial
         private set
+    /** Fargen på valgt fane (fra coveret). */
+    var accent: Int = C.ACCENT
+        set(v) { field = v; styleChips() }
     private val content = FrameLayout(ctx)
     private val chips = mutableMapOf<PaneType, TextView>()
 
@@ -54,9 +57,14 @@ class PaneView(
             PaneType.APPS -> AppsPanel(context)
         }
         content.addView(v, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        styleChips()
+    }
+
+    private fun styleChips() {
+        val dark = androidx.core.graphics.ColorUtils.calculateLuminance(accent) > 0.5
         chips.forEach { (k, chip) ->
-            chip.background = if (k == t) rounded(C.ACCENT, 14) else null
-            chip.setTextColor(if (k == t) 0xFFFFFFFF.toInt() else C.SUB)
+            chip.background = if (k == type) rounded(accent, 14) else null
+            chip.setTextColor(if (k == type) (if (dark) 0xFF101418.toInt() else 0xFFFFFFFF.toInt()) else C.SUB)
         }
     }
 }

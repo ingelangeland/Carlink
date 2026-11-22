@@ -1,13 +1,11 @@
 package no.carlink
 
 import android.content.Context
-import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.SystemClock
@@ -41,8 +39,8 @@ class VisualizerView(ctx: Context) : View(ctx) {
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
-    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { maskFilter = BlurMaskFilter(7f * resources.displayMetrics.density, BlurMaskFilter.Blur.NORMAL) }
-    private val edgeMask = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) }
+    // «Glød» som bred, svak strek i stedet for uskarphetsfilter (mye billigere å tegne)
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private var shadersDirty = true
     private var colorA = 0; private var colorB = 0; private var colorC = 0
     private val path = Path()
@@ -103,28 +101,26 @@ class VisualizerView(ctx: Context) : View(ctx) {
         colorB = ColorUtils.blendARGB(accent, 0xFFFF4FD8.toInt(), 0.5f)
         colorC = ColorUtils.blendARGB(accent, 0xFF6FE7FF.toInt(), 0.6f)
         val w = width.toFloat()
-        val sh = LinearGradient(0f, 0f, w, 0f, intArrayOf(colorA, colorB, colorC), null, Shader.TileMode.CLAMP)
-        fill.shader = sh
-        line.shader = sh
-        glow.shader = sh
-        // Fade ut mot venstre og høyre kant
-        edgeMask.shader = LinearGradient(
-            0f, 0f, w, 0f,
-            intArrayOf(0x00000000, 0xFF000000.toInt(), 0xFF000000.toInt(), 0x00000000),
-            floatArrayOf(0f, 0.12f, 0.88f, 1f), Shader.TileMode.CLAMP
+        // Fargeovergang og uttoning mot kantene bakes inn i samme shader → ingen ekstra tegnelag
+        fun faded(): Shader = android.graphics.ComposeShader(
+            LinearGradient(0f, 0f, w, 0f, intArrayOf(colorA, colorB, colorC), null, Shader.TileMode.CLAMP),
+            LinearGradient(0f, 0f, w, 0f,
+                intArrayOf(0x00000000, 0xFF000000.toInt(), 0xFF000000.toInt(), 0x00000000),
+                floatArrayOf(0f, 0.12f, 0.88f, 1f), Shader.TileMode.CLAMP),
+            PorterDuff.Mode.DST_IN,
         )
+        fill.shader = faded()
+        line.shader = faded()
+        glow.shader = faded()
     }
 
     override fun onDraw(c: Canvas) {
         if (width == 0 || height == 0) return
         ensureShaders()
-        val layer = c.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
         when (style) {
             Style.WAVE -> drawWave(c)
             Style.CAPSULES -> drawCapsules(c)
         }
-        c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), edgeMask)
-        c.restoreToCount(layer)
     }
 
     /** Glatt kurve gjennom punktene (Catmull-Rom → Bézier), speilet rundt midten. */
@@ -169,8 +165,8 @@ class VisualizerView(ctx: Context) : View(ctx) {
         }
         // Glødende toppkant på fremste lag
         wavePath(1.0f, 0f, 0.55f)
-        glow.alpha = 0x99
-        glow.style = Paint.Style.STROKE; glow.strokeWidth = 4f * d
+        glow.alpha = 0x40
+        glow.style = Paint.Style.STROKE; glow.strokeWidth = 7f * d
         c.drawPath(path, glow)
         line.alpha = 0xFF
         line.strokeWidth = 1.6f * d
@@ -190,7 +186,12 @@ class VisualizerView(ctx: Context) : View(ctx) {
                 val half = (h[i] * height / 2f * 0.95f).coerceAtLeast(bw / 2)
                 val x = i * slot + (slot - bw) / 2
                 rect.set(x, cy - half, x + bw, cy + half * 0.7f) // nedre del litt kortere = refleks
-                if (pass == 0) { glow.alpha = 0x80; c.drawRoundRect(rect, bw / 2, bw / 2, glow) }
+                if (pass == 0) {
+                    glow.alpha = 0x38
+                    rect.inset(-2.5f * d, -2.5f * d)
+                    c.drawRoundRect(rect, bw, bw, glow)
+                    rect.inset(2.5f * d, 2.5f * d)
+                }
                 else { fill.alpha = 0xFF; c.drawRoundRect(rect, bw / 2, bw / 2, fill) }
             }
         }

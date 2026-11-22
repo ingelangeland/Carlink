@@ -73,7 +73,8 @@ class ArtBackground(ctx: Context) : ScopedFrame(ctx) {
     override fun onStart(scope: CoroutineScope) {
         scope.launch { Ambient.media.collect { (m, _) -> setArt(m?.art, m?.artId ?: 0) } }
         scope.launch { Ambient.theme.collect { applyScrim(it) } }
-        for (iv in listOf(sa, sb)) {
+        // Ingen kontinuerlig bevegelse: bakgrunnen tegnes bare når coveret byttes (sparer strøm)
+        for (iv in emptyList<View>()) {
             drifts += ObjectAnimator.ofPropertyValuesHolder(
                 iv,
                 PropertyValuesHolder.ofFloat(View.SCALE_X, if (iv is FadeEdgeImageView) 1f else 1.12f, if (iv is FadeEdgeImageView) 1.04f else 1.25f),

@@ -16,7 +16,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
@@ -40,18 +39,13 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
     private val navText = ctx.label("", 13f, C.TEXT).apply { maxLines = 2 }
     private val navSub = ctx.label("", 12f, C.OK, true)
 
-    private val darkTiles = XYTileSource(
-        "CartoDark", 0, 20, 256, ".png",
-        arrayOf(
-            "https://a.basemaps.cartocdn.com/dark_all/",
-            "https://b.basemaps.cartocdn.com/dark_all/",
-            "https://c.basemaps.cartocdn.com/dark_all/",
-        ),
-        "© OpenStreetMap-bidragsytere © CARTO",
-    )
 
     init {
-        map.setTileSource(darkTiles)
+        // OpenStreetMap (gratis, ingen nøkkel), gjort mørkt med et fargefilter
+        map.setTileSource(org.osmdroid.tileprovider.tilesource.TileSourceFactory.MAPNIK)
+        map.overlayManager.tilesOverlay.setColorFilter(darkMapFilter())
+        map.overlayManager.tilesOverlay.loadingBackgroundColor = 0xFF1B1F26.toInt()
+        map.overlayManager.tilesOverlay.loadingLineColor = 0xFF1B1F26.toInt()
         map.setMultiTouchControls(true)
         map.zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
         map.isTilesScaledToDpi = true
@@ -176,4 +170,36 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
     }
 
     private fun Float.dp(): Float = this * resources.displayMetrics.density
+
+    /** Gjør lyse OSM-kart mørke: inverterer lysheten men beholder fargetonene (vann blått, parker grønne). */
+    private fun darkMapFilter(): android.graphics.ColorMatrixColorFilter {
+        val invert = android.graphics.ColorMatrix(floatArrayOf(
+            -1f, 0f, 0f, 0f, 255f,
+            0f, -1f, 0f, 0f, 255f,
+            0f, 0f, -1f, 0f, 255f,
+            0f, 0f, 0f, 1f, 0f,
+        ))
+        // Snu fargetonen 180° tilbake etter inverteringen
+        val hue = android.graphics.ColorMatrix(hueRotate(180f))
+        val dim = android.graphics.ColorMatrix(floatArrayOf(
+            0.85f, 0f, 0f, 0f, -8f,
+            0f, 0.85f, 0f, 0f, -8f,
+            0f, 0f, 0.92f, 0f, 0f,
+            0f, 0f, 0f, 1f, 0f,
+        ))
+        invert.postConcat(hue); invert.postConcat(dim)
+        return android.graphics.ColorMatrixColorFilter(invert)
+    }
+
+    private fun hueRotate(deg: Float): FloatArray {
+        val r = Math.toRadians(deg.toDouble())
+        val c = kotlin.math.cos(r).toFloat(); val s = kotlin.math.sin(r).toFloat()
+        val lr = 0.213f; val lg = 0.715f; val lb = 0.072f
+        return floatArrayOf(
+            lr + c * (1 - lr) + s * (-lr), lg + c * (-lg) + s * (-lg), lb + c * (-lb) + s * (1 - lb), 0f, 0f,
+            lr + c * (-lr) + s * 0.143f, lg + c * (1 - lg) + s * 0.140f, lb + c * (-lb) + s * (-0.283f), 0f, 0f,
+            lr + c * (-lr) + s * (-(1 - lr)), lg + c * (-lg) + s * lg, lb + c * (1 - lb) + s * lb, 0f, 0f,
+            0f, 0f, 0f, 1f, 0f,
+        )
+    }
 }

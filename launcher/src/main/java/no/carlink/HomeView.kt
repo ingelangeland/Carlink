@@ -68,7 +68,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
     private val navBox = LinearLayout(ctx)
     private val navIcon = ImageView(ctx)
     private val navTitle = ctx.label("", 30f, 0xFFFFFFFF.toInt(), true).shadow()
-    private val navText = ctx.label("", 16f, 0xE6FFFFFF.toInt()).apply { maxLines = 2; gravity = Gravity.CENTER }
+    private val navText = ctx.label("", 17f, 0xE6FFFFFF.toInt()).apply { maxLines = 3; gravity = Gravity.CENTER; maxWidth = 380.dp }
     private val navSub = ctx.label("", 14f, C.OK, true)
 
     private val favGrid = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
@@ -153,7 +153,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
             visibility = GONE
             addView(navIcon, LinearLayout.LayoutParams(84.dp, 84.dp))
             addView(navTitle, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = 6.dp })
-            addView(navText)
+            addView(navText, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = 4.dp })
             addView(navSub, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = 6.dp })
             setOnClickListener { actions.openMap() }
         }

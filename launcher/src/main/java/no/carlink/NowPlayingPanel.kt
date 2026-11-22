@@ -97,6 +97,14 @@ class NowPlayingPanel(ctx: Context) : ScopedFrame(ctx) {
             Ambient.media.collect { (m, src) -> render(m, src) }
         }
         scope.launch { while (isActive) { tick(); delay(1000) } }
+        scope.launch {
+            Ambient.accent.collect { a ->
+                progress.progressTintList = ColorStateList.valueOf(a)
+                source.setTextColor(a)
+                playBtn.background = rounded(a, 34)
+                playBtn.setColorFilter(if (androidx.core.graphics.ColorUtils.calculateLuminance(a) > 0.5) 0xFF101418.toInt() else C.TEXT)
+            }
+        }
     }
 
     private fun render(m: Hub.Media?, src: String) {
