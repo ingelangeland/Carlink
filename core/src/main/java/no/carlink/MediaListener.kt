@@ -88,7 +88,10 @@ class MediaListener : NotificationListenerService() {
 
     private fun select(list: List<MediaController>?) {
         val ctrls = list ?: try { msm?.getActiveSessions(cn()) } catch (_: SecurityException) { null } ?: emptyList()
-        val best = ctrls.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: ctrls.firstOrNull()
+        // Hopp over tomme økter (f.eks. Google-appen uten noe som spilles)
+        val real = ctrls.filter { !it.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).isNullOrBlank() ||
+            it.playbackState?.state == PlaybackState.STATE_PLAYING }
+        val best = real.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: real.firstOrNull()
         if (best?.sessionToken != current?.sessionToken) {
             current?.unregisterCallback(callback)
             current = best
