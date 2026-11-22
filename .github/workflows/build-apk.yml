@@ -13,6 +13,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Pakk ut CarLink.zip
+        run: |
+          if [ -f CarLink.zip ]; then
+            unzip -q -o CarLink.zip -d /tmp/prosjekt
+            cp -r /tmp/prosjekt/CarLink/. .
+          fi
+          ls -la
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
