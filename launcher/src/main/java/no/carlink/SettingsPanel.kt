@@ -37,12 +37,15 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         fun openAndroidSettings()
         fun openBluetoothSettings()
         fun makeDiscoverable()
+        fun openAppPermissions()
+        fun openDeveloperOptions()
+        fun isDefaultHome(): Boolean
     }
 
     private enum class Group(val label: String, val icon: Int) {
         MUSIC("Musikk", R.drawable.ic_music), MAP("Kart", R.drawable.ic_map),
         JOYSTICK("Joystick", R.drawable.ic_joystick), SCREEN("Skjerm", R.drawable.ic_screen),
-        LINK("Tilkobling", R.drawable.ic_wifi), ANDROID("Android-innstillinger", R.drawable.ic_settings),
+        LINK("Tilkobling", R.drawable.ic_wifi), ACCESS("Tilganger", R.drawable.ic_lock), ANDROID("Android-innstillinger", R.drawable.ic_settings),
     }
 
     private val box = LinearLayout(ctx)
@@ -123,6 +126,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             Group.JOYSTICK -> joystick()
             Group.SCREEN -> screen()
             Group.LINK -> link()
+            Group.ACCESS -> access()
             Group.ANDROID -> Unit
         }
     }
@@ -140,7 +144,6 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             context.prefs().edit().putString("vizStyle", if (it == 1) "CAPSULES" else "WAVE").apply()
             VisualizerView.styleChanged(context)
         }
-        action("Varseltilgang", "Vis og styr musikk som spilles på skjermen selv (f.eks. Tidal)") { host.openNotificationAccess() }
     }
 
     private fun map() {
@@ -163,8 +166,27 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
             context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()
         }
-        action("Bruk CarLink som hjemmeskjerm", null) { host.makeDefaultHome() }
     }
+
+    /** Alle tillatelser samlet, med status: hva som er gitt, og ett trykk til riktig sted for det som mangler. */
+    private fun access() {
+        fun st(ok: Boolean, missing: String) = if (ok) "✓ Gitt" else missing
+        action("Varseltilgang (musikk og navigasjon)",
+            st(MediaListener.isEnabled(context), "Mangler – trengs for musikk og navigasjon fra Google Maps på skjermen")) { host.openNotificationAccess() }
+        action("CarLink som hjemmeskjerm", st(host.isDefaultHome(), "Ikke valgt – trykk for å velge")) { host.makeDefaultHome() }
+        action("Posisjon og Bluetooth",
+            st(Perms.missing(context, Perms.forRole(false)).isEmpty(), "Mangler – trengs for tilkobling og kart")) { host.openAppPermissions() }
+        val mock = runCatching {
+            val ao = context.getSystemService(android.app.AppOpsManager::class.java)
+            ao.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_MOCK_LOCATION, android.os.Process.myUid(), context.packageName) ==
+                android.app.AppOpsManager.MODE_ALLOWED
+        }.getOrDefault(false)
+        action("Simulert posisjon (telefonens GPS i alle apper)",
+            st(mock, "Ikke valgt – Utvikleralternativer → «Velg app for simulert posisjon» → CarLink")) { host.openDeveloperOptions() }
+    }
+
+    /** Oppdater visningen (f.eks. når du kommer tilbake fra Android-innstillingene). */
+    fun refresh() { if (isOpen) build() }
 
     private fun link() {
         action("Start tilkoblingen på nytt", null) { host.restartLink() }

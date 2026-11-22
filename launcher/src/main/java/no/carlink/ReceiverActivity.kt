@@ -62,6 +62,7 @@ class ReceiverActivity : AppCompatActivity() {
         super.onResume()
         // Neste manglende tillatelse (etter at Androids egne spørsmål er besvart)
         if (Perms.missing(this, Perms.forRole(false)).isEmpty()) guide.next()
+        if (::settings.isInitialized) settings.refresh()   // status for tilganger oppdateres når du kommer tilbake
     }
 
     /** Bilenheten bytter dag/natt (ofte med frontlysene): ingen omstart, bare kartet tilpasser seg. */
@@ -366,6 +367,11 @@ class ReceiverActivity : AppCompatActivity() {
         override fun openNotificationAccess() = SetupGuide.openNotificationAccess(this@ReceiverActivity)
         override fun openAndroidSettings() { Launch.start(this@ReceiverActivity, Intent(Settings.ACTION_SETTINGS)) }
         override fun openBluetoothSettings() { Launch.start(this@ReceiverActivity, Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
+        override fun openAppPermissions() {
+            Launch.start(this@ReceiverActivity, Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")))
+        }
+        override fun openDeveloperOptions() { Launch.start(this@ReceiverActivity, Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+        override fun isDefaultHome() = this@ReceiverActivity.isDefaultHome()
         override fun makeDiscoverable() {
             Launch.start(this@ReceiverActivity, Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
                 .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300))

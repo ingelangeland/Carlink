@@ -96,6 +96,8 @@ echo "== Ytelse"
 go menu;  shot 12-meny 3
 adb shell am start -W -n "$L" --ez demo true --es show menu --es menupage JOYSTICK $EXTRA > /dev/null
           shot 12b-meny-joystick 3
+adb shell am start -W -n "$L" --ez demo true --es show menu --es menupage ACCESS $EXTRA > /dev/null
+          shot 12d-meny-tilganger 3
 adb shell input keyevent 4
           shot 12c-meny-lukket 2
 adb shell am start -W -n "$L" --ez demo true --es show map --es mapmode DAY $EXTRA > /dev/null
