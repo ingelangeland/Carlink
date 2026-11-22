@@ -74,6 +74,15 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice|location|mediaProjection|microphone" />
 
+        <!-- Deling av joystick-opptak fra bilen -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="no.carlink.sender.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/files" />
+        </provider>
+
         <!-- Starter/stopper CarLink når telefonen kobles til/fra valgte Bluetooth-enheter -->
         <receiver android:name="no.carlink.BtTrigger" android:exported="true">
             <intent-filter>

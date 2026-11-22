@@ -49,6 +49,7 @@ class SenderActivity : AppCompatActivity() {
     private lateinit var autoBox: CheckBox
     private lateinit var triggerList: LinearLayout
     private lateinit var bgLocBtn: TextView
+    private lateinit var joyBtn: TextView
     private val bgLocLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { updateBgLoc(); guide.next() }
 
     private val projLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
@@ -71,6 +72,9 @@ class SenderActivity : AppCompatActivity() {
         col.addView(label("CarLink · Sender", 26f, C.TEXT, true))
         statusTv = label("", 14f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) }
         col.addView(statusTv)
+
+        joyBtn = pill("Del joystick-opptak fra bilen", C.ACCENT) { runCatching { startActivity(JoyLog.shareIntent(this)) } }
+        col.addView(joyBtn, wrap(10))
 
         col.section("1 · Tilgang til musikk og navigasjon")
         notifBtn = pill("Gi tilgang til musikk og navigasjon") { SetupGuide.openNotificationAccess(this) }
@@ -247,6 +251,7 @@ class SenderActivity : AppCompatActivity() {
         batteryBtn.text = if (bat) "✓ Kan kjøre i bakgrunnen" else "Tillat at CarLink kjører i bakgrunnen"
         batteryBtn.background = rounded(if (bat) C.PANEL2 else C.WARN, 22)
         updateBgLoc()
+        joyBtn.visibility = if (JoyLog.exists(this)) android.view.View.VISIBLE else android.view.View.GONE
         loadDevices()
         BtTrigger.checkNow(this)
         guide.next()

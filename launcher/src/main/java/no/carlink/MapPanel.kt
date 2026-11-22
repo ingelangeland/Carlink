@@ -44,9 +44,7 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
     init {
         // OpenStreetMap (gratis, ingen nøkkel), gjort mørkt med et fargefilter
         map.setTileSource(org.osmdroid.tileprovider.tilesource.TileSourceFactory.MAPNIK)
-        map.overlayManager.tilesOverlay.setColorFilter(darkMapFilter())
-        map.overlayManager.tilesOverlay.loadingBackgroundColor = 0xFF1B1F26.toInt()
-        map.overlayManager.tilesOverlay.loadingLineColor = 0xFF1B1F26.toInt()
+        // Dag/natt-filteret settes i onStart (feltene under er ikke klare ennå her)
         map.setMultiTouchControls(true)
         map.zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
         map.isTilesScaledToDpi = true
@@ -118,6 +116,7 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
 
     override fun onStart(scope: CoroutineScope) {
         map.onResume()
+        scope.launch { DayNight.night.collect { animateNight(it) } }
         scope.launch {
             Hub.remoteNav.collect { n ->
                 navCard.visibility = if (n == null) GONE else VISIBLE
@@ -181,7 +180,42 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
     private fun Float.dp(): Float = this * resources.displayMetrics.density
 
     /** Gjør lyse OSM-kart mørke: inverterer lysheten men beholder fargetonene (vann blått, parker grønne). */
-    private fun darkMapFilter(): android.graphics.ColorMatrixColorFilter {
+    // ---------------------------------------------------------------- dag / natt
+
+    private var nightAmount = -1f
+    private var dayNightAnim: android.animation.ValueAnimator? = null
+    private val darkMatrix: FloatArray by lazy { darkMapMatrix() }
+    private val identity = floatArrayOf(1f,0f,0f,0f,0f, 0f,1f,0f,0f,0f, 0f,0f,1f,0f,0f, 0f,0f,0f,1f,0f)
+    private val mix = FloatArray(20)
+
+    /** 0 = dagkart, 1 = nattkart; mellomverdier under den myke overgangen. */
+    private fun applyNight(t: Float) {
+        if (t == nightAmount) return
+        nightAmount = t
+        val o = map.overlayManager.tilesOverlay
+        if (t <= 0f) o.setColorFilter(null)
+        else {
+            for (i in 0 until 20) mix[i] = identity[i] + (darkMatrix[i] - identity[i]) * t
+            o.setColorFilter(android.graphics.ColorMatrixColorFilter(mix))
+        }
+        val bg = androidx.core.graphics.ColorUtils.blendARGB(0xFFE9E5DC.toInt(), 0xFF1B1F26.toInt(), t)
+        o.loadingBackgroundColor = bg; o.loadingLineColor = bg
+        map.invalidate()
+    }
+
+    private fun animateNight(night: Boolean) {
+        val target = if (night) 1f else 0f
+        if (nightAmount < 0f || !isShown) { dayNightAnim?.cancel(); applyNight(target); return }
+        if (target == nightAmount) return
+        dayNightAnim?.cancel()
+        dayNightAnim = android.animation.ValueAnimator.ofFloat(nightAmount, target).apply {
+            duration = 900
+            addUpdateListener { applyNight(it.animatedValue as Float) }
+            start()
+        }
+    }
+
+    private fun darkMapMatrix(): FloatArray {
         val invert = android.graphics.ColorMatrix(floatArrayOf(
             -1f, 0f, 0f, 0f, 255f,
             0f, -1f, 0f, 0f, 255f,
@@ -197,7 +231,7 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
             0f, 0f, 0f, 1f, 0f,
         ))
         invert.postConcat(hue); invert.postConcat(dim)
-        return android.graphics.ColorMatrixColorFilter(invert)
+        return invert.array.copyOf()
     }
 
     private fun hueRotate(deg: Float): FloatArray {

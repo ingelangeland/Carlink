@@ -40,6 +40,7 @@ class ReceiverActivity : AppCompatActivity() {
     private lateinit var home: HomeView
     private lateinit var drawer: AppDrawer
     private lateinit var rail: View
+    private lateinit var pointerRoot: PointerRoot
     private lateinit var statusDot: View
     private lateinit var statusText: TextView
     private val panes = mutableListOf<PaneType>()
@@ -62,6 +63,12 @@ class ReceiverActivity : AppCompatActivity() {
         if (Perms.missing(this, Perms.forRole(false)).isEmpty()) guide.next()
     }
 
+    /** Bilenheten bytter dag/natt (ofte med frontlysene): ingen omstart, bare kartet tilpasser seg. */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        DayNight.onSystem(this, newConfig)
+    }
+
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(UiScale.wrap(newBase))
     }
@@ -71,6 +78,13 @@ class ReceiverActivity : AppCompatActivity() {
         DebugFlags.noVisualizer = intent?.getBooleanExtra("noviz", false) == true
         DebugFlags.noArt = intent?.getBooleanExtra("noart", false) == true
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        DayNight.onSystem(this, resources.configuration)
+        // Sjekk dag/natt hvert minutt mens skjermen vises (billig: én liten utregning)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) { DayNight.update(this@ReceiverActivity); kotlinx.coroutines.delay(60_000) }
+            }
+        }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
@@ -78,7 +92,8 @@ class ReceiverActivity : AppCompatActivity() {
         }
 
         // Lag 1: albumcoveret over hele skjermen. Lag 2: meny + innhold (hjem eller delt skjerm).
-        val frame = FrameLayout(this).apply { setBackgroundColor(C.BG) }
+        val frame = PointerRoot(this).apply { setBackgroundColor(C.BG); refresh() }
+        pointerRoot = frame
         // «content» = alt som blir uskarpt bak app-oversikten
         val content = FrameLayout(this)
         frame.addView(content, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -252,8 +267,12 @@ class ReceiverActivity : AppCompatActivity() {
     }
 
     /** Meny og paneler i delt visning får coverets farger, og coveret synes gjennom. */
+    private val pointerColor = Runnable { pointerRoot.refresh(Ambient.theme.value.accent) }
+
     private fun applyChromeTheme(t: Ambient.Theme) {
         rail.setBackgroundColor(Ambient.alpha(t.dark, 0xCC))
+        // Prikken får coverfargen når fargeovergangen er ferdig (ikke for hvert animasjonsbilde)
+        pointerRoot.removeCallbacks(pointerColor); pointerRoot.postDelayed(pointerColor, 400)
         for (i in 0 until split.childCount) {
             val pane = split.getChildAt(i)
             pane.background = rounded(Ambient.alpha(t.dark, 0xBF), 22, Ambient.alpha(t.accent, 0x30))
@@ -297,6 +316,7 @@ class ReceiverActivity : AppCompatActivity() {
     private fun handleIntent(i: Intent?) {
         if (i == null) return
         if (i.getBooleanExtra("demo", false)) DemoFeeder.start(this)
+        i.getStringExtra("mapmode")?.let { m -> runCatching { DayNight.setMode(this, DayNight.Mode.valueOf(m)) } }
         val show = i.getStringExtra("show") ?: return
         DemoFeeder.showNav = show == "nav"
         if (show != "drawer" && ::drawer.isInitialized) drawer.close(immediate = true)
@@ -308,6 +328,8 @@ class ReceiverActivity : AppCompatActivity() {
             "music" -> setLayout(listOf(PaneType.MUSIC))
             "apps" -> setLayout(listOf(PaneType.APPS))
             "drawer" -> { showHome(); drawer.open() }
+            "menu" -> { showHome(); window.decorView.postDelayed({ showSettings() }, 500) }
+            "joystick" -> startActivity(Intent(this, JoystickActivity::class.java))
         }
     }
 
@@ -330,6 +352,17 @@ class ReceiverActivity : AppCompatActivity() {
                     else "CarLink styrer ikke avspillingen – hvilemodus tar seg av det", Toast.LENGTH_LONG).show()
             },
             "Størrelse på tekst og knapper: ${UiScale.label(this)}" to { chooseUiScale() },
+            "Kart dag/natt: ${DayNight.mode(this).label}" to {
+                val m = DayNight.Mode.entries; DayNight.setMode(this, m[(DayNight.mode(this).ordinal + 1) % m.size])
+                Toast.makeText(this, "Kart: ${DayNight.mode(this).label}" + if (DayNight.mode(this) == DayNight.Mode.AUTO)
+                    " (følger bilens lys hvis den har det, ellers solen)" else "", Toast.LENGTH_LONG).show()
+            },
+            "Prikk for joystick/mus: ${PointerRoot.size(this).label}" to {
+                val s = PointerRoot.Size.entries; PointerRoot.setSize(this, s[(PointerRoot.size(this).ordinal + 1) % s.size])
+                pointerRoot.refresh()
+                Toast.makeText(this, "Prikk: ${PointerRoot.size(this).label}", Toast.LENGTH_SHORT).show()
+            },
+            "Joystick: lær opp (ta opp bevegelsene)" to { startActivity(Intent(this, JoystickActivity::class.java)) },
             "Lydbuffer: ${p.getInt("audioBufferMs", 600)} ms" to { chooseBuffer() },
             ("Telefonens GPS i alle apper (også Google Maps): " + if (p.getBoolean("mockGps", false)) "PÅ" else "AV") to { toggleMockGps() },
             "Start tilkoblingen på nytt" to { LinkService.startReceiver(this, force = true) },

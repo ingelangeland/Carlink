@@ -698,6 +698,7 @@ class LinkService : Service() {
                 setStatus(if (isSender) "Tilkoblet skjermen $it" else "Tilkoblet telefonen $it")
             }
             "cmd" -> if (isSender) MediaListener.control(o.optString("a"))
+            "joylog" -> if (isSender) JoyLog.received(this, o.optString("name", "CarLink-joystick.txt"), o.optString("text"))
             "cfg" -> if (isSender) {
                 peerAutoPlay = o.optBoolean("autoPlay", false)
                 if (peerAutoPlay && o.optString("last") == "phone") main.postDelayed({ AutoPlay.resume(this) }, 1500)

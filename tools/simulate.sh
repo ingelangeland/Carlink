@@ -92,6 +92,22 @@ adb shell input tap $NEXT_X $NEXT_Y      # «neste låt» i musikklinjen → nyt
           shot 09-hjem-neste-lat 6
 
 echo "== Ytelse"
+# --- Meny, kart dag/natt og joystick-opptak
+go menu;  shot 12-meny 3
+adb shell input keyevent 4
+adb shell am start -W -n "$L" --ez demo true --es show map --es mapmode DAY $EXTRA > /dev/null
+          shot 13-kart-dag 10
+adb shell am start -W -n "$L" --ez demo true --es show map --es mapmode AUTO $EXTRA > /dev/null
+          shot 13b-kart-auto 4
+go joystick; sleep 6
+for k in DPAD_UP DPAD_DOWN DPAD_LEFT DPAD_RIGHT DPAD_CENTER BACK; do adb shell input keyevent KEYCODE_$k; done
+adb shell input trackball roll 2 1
+adb shell input mouse tap 400 300
+          shot 14-joystick-opptak 2
+sleep 80
+          shot 15-joystick-ferdig 1
+adb logcat -d | grep -i "joystick" | tail -3 || true
+
 # --- Flyt i menyene: åpne/lukke app-oversikten med knappen og dra i delt skjerm (målt)
 GRID_X=$(dp 54); GRID_Y=$(dp 44)
 go home; sleep 4
