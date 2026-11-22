@@ -98,6 +98,10 @@ adb shell am start -W -n "$L" --ez demo true --es show menu --es menupage JOYSTI
           shot 12b-meny-joystick 3
 adb shell am start -W -n "$L" --ez demo true --es show menu --es menupage ACCESS $EXTRA > /dev/null
           shot 12d-meny-tilganger 3
+for pg in MAP:12e-meny-kart SCREEN:12f-meny-skjerm LINK:12g-meny-tilkobling; do
+  adb shell am start -W -n "$L" --ez demo true --es show menu --es menupage ${pg%%:*} $EXTRA > /dev/null
+  shot ${pg#*:} 3
+done
 adb shell input keyevent 4
           shot 12c-meny-lukket 2
 adb shell am start -W -n "$L" --ez demo true --es show map --es mapmode DAY $EXTRA > /dev/null
