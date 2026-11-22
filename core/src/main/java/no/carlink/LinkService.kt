@@ -563,6 +563,9 @@ class LinkService : Service() {
                     }
                 } catch (_: Exception) {}
                 prefs().getString("lastPhoneIp", null)?.let { if (it !in candidates) candidates[it] = null }
+                // Test på én enhet: Sender-appen installert på samme enhet
+                if (packageName != "no.carlink.sender" &&
+                    runCatching { packageManager.getPackageInfo("no.carlink.sender", 0) }.isSuccess) candidates["127.0.0.1"] = null
                 for ((ip, net) in candidates) {
                     if (rxBusy.get()) break
                     try {

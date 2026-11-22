@@ -88,6 +88,18 @@ adb shell input tap $NEXT_X $NEXT_Y      # «neste låt» i musikklinjen → nyt
           shot 09-hjem-neste-lat 6
 
 echo "== Ytelse"
+# --- Ekte tilkobling uten Bluetooth: skjermen finner telefonen over Wi-Fi (samme enhet i testen)
+adb shell am force-stop no.carlink.launcher
+adb shell am start -W -n "$L" > /dev/null
+sleep 3
+adb shell am start -W -n "$S" --ez autoconnect true > /dev/null
+          shot 10-sender-wifi-tilkobling 12
+adb shell am start -W -n "$L" > /dev/null
+          shot 11-skjerm-wifi-tilkoblet 4
+adb logcat -d | grep -E "Tilkoblet|CarLink" | tail -5 > "$OUT/wifi.txt" || true
+adb shell am force-stop no.carlink.sender
+adb shell am force-stop no.carlink.launcher
+
 go home; sleep 5
 adb shell dumpsys gfxinfo no.carlink.launcher reset > /dev/null
 sleep 15

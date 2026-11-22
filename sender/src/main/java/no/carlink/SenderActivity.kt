@@ -197,6 +197,7 @@ class SenderActivity : AppCompatActivity() {
         val miss = Perms.missing(this, Perms.forRole(true))
         if (miss.isNotEmpty()) permLauncher.launch(miss.toTypedArray())
         if (intent?.getBooleanExtra("carlink_audio", false) == true) toggleAudio()
+        if (intent?.getBooleanExtra("autoconnect", false) == true) connect()
     }
 
     override fun onNewIntent(intent: Intent) {
