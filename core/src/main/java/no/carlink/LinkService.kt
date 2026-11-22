@@ -173,6 +173,9 @@ class LinkService : Service() {
     private var autoStarted = false
     private val triggersUp = mutableSetOf<String>()
     private val stopLater = Runnable { shutdown(); stopSelf() }
+    // Automatisk spill/pause: venter 5 s etter frakobling (korte brudd skal ikke pause musikken)
+    @Volatile private var peerAutoPlay = false
+    private val pauseLater = Runnable { AutoPlay.pause() }
     // Skjermen: bare én økt om gangen (Bluetooth og Wi-Fi-søk kan begge finne telefonen)
     private val rxBusy = AtomicBoolean(false)
 
@@ -471,6 +474,12 @@ class LinkService : Service() {
      */
     private suspend fun receiverLoop() = coroutineScope {
         val incoming = Channel<Pair<Socket, Network?>>(Channel.UNLIMITED)
+        // Husk hvor musikken sist spilte (bilskjermen selv eller telefonen) – overlever strømbrudd
+        launch {
+            kotlinx.coroutines.flow.combine(Hub.localMedia, Hub.remoteMedia) { l, r ->
+                when { l?.playing == true -> "car"; r?.playing == true -> "phone"; else -> null }
+            }.collect { src -> if (src != null && src != prefs().getString("lastSource", null)) prefs().edit().putString("lastSource", src).apply() }
+        }
         btAdapter()?.let { ad -> launch { btListenLoop(ad, incoming) } }
         launch { wifiProbeLoop(incoming) }
         setStatus("Venter på telefonen …")
@@ -643,6 +652,14 @@ class LinkService : Service() {
             for (line in out) { w.write(line); w.newLine(); w.flush() }
         }
         out.trySend(JSONObject().put("t", "hello").put("name", Build.MODEL).toString())
+        main.removeCallbacks(pauseLater)
+        if (!isSender) {
+            // Skjermen bestemmer: send valget til telefonen, og start musikken der den sist spilte
+            val auto = AutoPlay.enabled(this@LinkService)
+            val last = prefs().getString("lastSource", "phone")
+            out.trySend(JSONObject().put("t", "cfg").put("autoPlay", auto).put("last", last).toString())
+            if (auto && last == "car") main.postDelayed({ AutoPlay.resume(this@LinkService) }, 1500)
+        }
         if (isSender && autoStarted && projection == null) audioReminder(true)
         val pingJob = launch { while (isActive) { delay(5000); out.trySend("{\"t\":\"ping\"}") } }
         val feedJob = if (isSender) launch(Dispatchers.Main) { senderFeeds() } else null
@@ -662,6 +679,8 @@ class LinkService : Service() {
             Hub.remoteMedia.value = null
             Hub.remoteNav.value = null
             if (isSender) { audioJob?.cancel(); audioReminder(false) } else { stopAudioPlayback(); stopMockGps() }
+            val auto = if (isSender) peerAutoPlay else AutoPlay.enabled(this@LinkService)
+            if (auto) { main.removeCallbacks(pauseLater); main.postDelayed(pauseLater, 5000) }
             holdLocks(false)
             feedJob?.cancel(); pingJob.cancel(); writerJob.cancel()
             out.close()
@@ -676,6 +695,10 @@ class LinkService : Service() {
                 setStatus(if (isSender) "Tilkoblet skjermen $it" else "Tilkoblet telefonen $it")
             }
             "cmd" -> if (isSender) MediaListener.control(o.optString("a"))
+            "cfg" -> if (isSender) {
+                peerAutoPlay = o.optBoolean("autoPlay", false)
+                if (peerAutoPlay && o.optString("last") == "phone") main.postDelayed({ AutoPlay.resume(this) }, 1500)
+            }
             "media" -> if (!isSender) {
                 Hub.remoteMedia.value = if (o.optBoolean("none")) null else Protocol.parseMedia(o, Hub.remoteMedia.value)
             }

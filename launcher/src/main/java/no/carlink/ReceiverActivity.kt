@@ -15,6 +15,7 @@ import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextClock
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -318,39 +319,39 @@ class ReceiverActivity : AppCompatActivity() {
     // ------------------------------------------------------------- innstillinger
 
     private fun showSettings() {
-        val items = arrayOf(
-            "Gjør skjermen synlig for Bluetooth (5 min)",
-            "Lydbuffer: ${prefs().getInt("audioBufferMs", 600)} ms",
-            "Telefonens GPS i alle apper (også Google Maps): " + if (prefs().getBoolean("mockGps", false)) "PÅ" else "AV",
-            "Start tilkoblingen på nytt",
-            "Bluetooth-innstillinger",
-            "Varseltilgang (vis musikk som spilles på skjermen selv)",
-            "Velg CarLink som standard hjemmeskjerm",
-            "Demomodus (simulert telefon): " + if (DemoFeeder.active) "PÅ" else "AV",
-            "Størrelse på tekst og knapper: " + UiScale.label(this),
+        val p = prefs()
+        val items: List<Pair<String, () -> Unit>> = listOf(
+            "⚙  Android-innstillinger" to { Launch.start(this, Intent(Settings.ACTION_SETTINGS)) },
+            ("Styr avspilling ved til-/frakobling: " + if (AutoPlay.enabled(this)) "JA" else "NEI") to {
+                p.edit().putBoolean("autoPlay", !AutoPlay.enabled(this)).apply()
+                Toast.makeText(this, if (AutoPlay.enabled(this))
+                    "Musikken starter når telefonen kobles til og pauses når den kobles fra"
+                    else "CarLink styrer ikke avspillingen – hvilemodus tar seg av det", Toast.LENGTH_LONG).show()
+            },
+            "Størrelse på tekst og knapper: ${UiScale.label(this)}" to { chooseUiScale() },
+            "Lydbuffer: ${p.getInt("audioBufferMs", 600)} ms" to { chooseBuffer() },
+            ("Telefonens GPS i alle apper (også Google Maps): " + if (p.getBoolean("mockGps", false)) "PÅ" else "AV") to { toggleMockGps() },
+            "Start tilkoblingen på nytt" to { LinkService.startReceiver(this, force = true) },
+            "Gjør skjermen synlig for Bluetooth (5 min)" to {
+                Launch.start(this, Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+                    .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300))
+            },
+            "Bluetooth-innstillinger" to { Launch.start(this, Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) },
+            "Varseltilgang (vis musikk som spilles på skjermen selv)" to { SetupGuide.openNotificationAccess(this) },
+            "Velg CarLink som standard hjemmeskjerm" to { Launch.start(this, Intent(Settings.ACTION_HOME_SETTINGS)) },
+            ("Demomodus (simulert telefon): " + if (DemoFeeder.active) "PÅ" else "AV") to {
+                if (DemoFeeder.active) {
+                    DemoFeeder.stop(); p.edit().putBoolean("demo", false).apply()
+                    LinkService.startReceiver(this, force = true)
+                } else {
+                    LinkService.stop(this); p.edit().putBoolean("demo", true).apply()
+                    DemoFeeder.start(this)
+                }
+            },
         )
         AlertDialog.Builder(this)
             .setTitle(Hub.status.value)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> Launch.start(this, Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
-                        .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300))
-                    1 -> chooseBuffer()
-                    2 -> toggleMockGps()
-                    3 -> LinkService.startReceiver(this, force = true)
-                    4 -> Launch.start(this, Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-                    5 -> SetupGuide.openNotificationAccess(this)
-                    6 -> Launch.start(this, Intent(Settings.ACTION_HOME_SETTINGS))
-                    7 -> if (DemoFeeder.active) {
-                        DemoFeeder.stop(); prefs().edit().putBoolean("demo", false).apply()
-                        LinkService.startReceiver(this, force = true)
-                    } else {
-                        LinkService.stop(this); prefs().edit().putBoolean("demo", true).apply()
-                        DemoFeeder.start(this)
-                    }
-                    8 -> chooseUiScale()
-                }
-            }
+            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
             .setNegativeButton("Lukk", null)
             .show()
     }
