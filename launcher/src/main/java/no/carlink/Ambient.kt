@@ -21,11 +21,11 @@ object Ambient {
      */
     val topRightNeed = MutableStateFlow(0f)
 
-    /** Musikk fra telefonen hvis tilkoblet, ellers musikk som spilles på skjermen selv. */
+    /** Musikk fra telefonen hvis den spiller, ellers musikk som spilles på skjermen selv (f.eks. Tidal i bilen). */
     val media: Flow<Pair<Hub.Media?, String>> =
         combine(Hub.connected, Hub.remoteMedia, Hub.localMedia, Hub.audioStreaming) { c, r, l, a ->
             val sound = if (a) " · LYD PÅ SKJERMEN" else ""
-            if (c && r != null) r to "FRA TELEFONEN · ${r.app.uppercase()}$sound"
+            if (Hub.useRemote(c, r, l)) r!! to "FRA TELEFONEN · ${r.app.uppercase()}$sound"
             else l to (l?.app?.uppercase() ?: "")
         }
 

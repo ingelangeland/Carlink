@@ -66,6 +66,8 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
+import java.net.SocketTimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.net.Socket
 import java.util.Collections
 import java.util.concurrent.LinkedBlockingDeque
@@ -97,13 +99,35 @@ class LinkService : Service() {
         private const val EXTRA_ADDR = "addr"
         private const val EXTRA_HOTSPOT = "hotspot"
         private const val EXTRA_FORCE = "force"
+        private const val EXTRA_AUTO = "auto"
+        private const val EXTRA_TRIGGER = "trigger"
+        private const val EXTRA_UP = "up"
+        private const val ACTION_TRIGGER = "no.carlink.TRIGGER"
+        private const val NOTIF_AUDIO = 43
+        /** Hvor lenge telefonen venter etter at bilens Bluetooth er borte før CarLink stopper. */
+        const val STOP_DELAY_MS = 120_000L
+
+        /** Kjører senderen nå? (brukes av Bluetooth-mottakeren) */
+        @Volatile var senderRunning = false; private set
         private const val CHANNEL = "link"
         private const val NOTIF_ID = 42
 
-        fun startSender(ctx: Context, address: String, hotspot: Boolean) = ContextCompat.startForegroundService(
-            ctx, Intent(ctx, LinkService::class.java).setAction(ACTION_SENDER)
-                .putExtra(EXTRA_ADDR, address).putExtra(EXTRA_HOTSPOT, hotspot)
-        )
+        /**
+         * Start telefonsiden. [address] = skjermens Bluetooth (kan være null: da venter telefonen bare
+         * på at skjermen finner den over Wi-Fi/hotspot). [trigger] = Bluetooth-enheten som startet det automatisk.
+         */
+        fun startSender(ctx: Context, address: String?, hotspot: Boolean, auto: Boolean = false, trigger: String? = null) =
+            ContextCompat.startForegroundService(
+                ctx, Intent(ctx, LinkService::class.java).setAction(ACTION_SENDER)
+                    .putExtra(EXTRA_ADDR, address).putExtra(EXTRA_HOTSPOT, hotspot)
+                    .putExtra(EXTRA_AUTO, auto).putExtra(EXTRA_TRIGGER, trigger)
+            )
+
+        /** En utløser-enhet (f.eks. bilens Bluetooth) ble koblet fra. */
+        fun triggerLost(ctx: Context, address: String) {
+            ctx.startService(Intent(ctx, LinkService::class.java).setAction(ACTION_TRIGGER)
+                .putExtra(EXTRA_TRIGGER, address).putExtra(EXTRA_UP, false))
+        }
 
         fun startReceiver(ctx: Context, force: Boolean = false) = ContextCompat.startForegroundService(
             ctx, Intent(ctx, LinkService::class.java).setAction(ACTION_RECEIVER).putExtra(EXTRA_FORCE, force)
@@ -144,6 +168,13 @@ class LinkService : Service() {
     private var wifiLocks: List<WifiManager.WifiLock> = emptyList()
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // Automatisk start/stopp
+    private var autoStarted = false
+    private val triggersUp = mutableSetOf<String>()
+    private val stopLater = Runnable { shutdown(); stopSelf() }
+    // Skjermen: bare én økt om gangen (Bluetooth og Wi-Fi-søk kan begge finne telefonen)
+    private val rxBusy = AtomicBoolean(false)
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -158,9 +189,29 @@ class LinkService : Service() {
             ACTION_AUDIO_STOP -> { stopAudioCapture(); return START_NOT_STICKY }
             ACTION_SENDER -> {
                 if (!goForeground(true)) return START_NOT_STICKY
-                val addr = intent.getStringExtra(EXTRA_ADDR) ?: return START_NOT_STICKY
+                val addr = intent.getStringExtra(EXTRA_ADDR)?.ifBlank { null }
                 val hs = intent.getBooleanExtra(EXTRA_HOTSPOT, false)
+                val auto = intent.getBooleanExtra(EXTRA_AUTO, false)
+                intent.getStringExtra(EXTRA_TRIGGER)?.let { triggersUp += it }
+                main.removeCallbacks(stopLater)
+                // Bilen kom tilbake innen 2 min: bare fortsett
+                if (auto && mode == "sender" && job?.isActive == true) {
+                    if (!Hub.connected.value) setStatus("Venter på skjermen …")
+                    return START_STICKY
+                }
+                autoStarted = auto
+                if (!auto) triggersUp.clear()
                 restart("sender") { senderLoop(addr, hs) }
+            }
+            ACTION_TRIGGER -> {
+                if (mode != "sender") { if (mode == null) stopSelf(); return START_NOT_STICKY }
+                val a = intent.getStringExtra(EXTRA_TRIGGER) ?: return START_STICKY
+                triggersUp -= a
+                if (autoStarted && triggersUp.isEmpty()) {
+                    main.removeCallbacks(stopLater)
+                    main.postDelayed(stopLater, STOP_DELAY_MS)
+                    setStatus("Bilen er frakoblet – CarLink stopper om 2 minutter")
+                }
             }
             ACTION_RECEIVER -> {
                 if (!goForeground(false)) return START_NOT_STICKY
@@ -207,12 +258,35 @@ class LinkService : Service() {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
         return try {
-            ServiceCompat.startForeground(this, NOTIF_ID, notification(Hub.status.value), type)
+            try {
+                ServiceCompat.startForeground(this, NOTIF_ID, notification(Hub.status.value), type)
+            } catch (e: SecurityException) {
+                // Startet i bakgrunnen uten «posisjon hele tiden»: fortsett uten GPS-typen
+                ServiceCompat.startForeground(this, NOTIF_ID, notification(Hub.status.value),
+                    type and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION.inv())
+            }
             true
         } catch (e: Exception) {
             Hub.status.value = "Mangler tillatelser: ${e.message}"
             stopSelf()
             false
+        }
+    }
+
+    /** Reserve: varsel «Strøm lyd til skjermen» ved automatisk start (kan slås av i appen). */
+    private fun audioReminder(show: Boolean) {
+        val nm = getSystemService(NotificationManager::class.java)
+        if (!show || !prefs().getBoolean("audioReminder", false)) { nm.cancel(NOTIF_AUDIO); return }
+        runCatching {
+            nm.createNotificationChannel(NotificationChannel("audio", "Lyd til skjermen", NotificationManager.IMPORTANCE_DEFAULT))
+            val i = (packageManager.getLaunchIntentForPackage(packageName) ?: return)
+                .putExtra("carlink_audio", true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            val pi = PendingIntent.getActivity(this, 3, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            nm.notify(NOTIF_AUDIO, NotificationCompat.Builder(this, "audio")
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentTitle("CarLink er tilkoblet")
+                .setContentText("Trykk for å strømme lyden over Wi-Fi til skjermen")
+                .setContentIntent(pi).setAutoCancel(true).build())
         }
     }
 
@@ -228,6 +302,8 @@ class LinkService : Service() {
         audioJob?.cancel(); stopAudioPlayback()
         closeAll(); releaseWifi(); stopHotspot()
         mode = m
+        senderRunning = m == "sender"
+        rxBusy.set(false)
         job = scope.launch(block = block)
     }
 
@@ -240,6 +316,11 @@ class LinkService : Service() {
         Hub.remoteMedia.value = null
         Hub.status.value = "Stoppet"
         mode = null
+        senderRunning = false
+        autoStarted = false
+        triggersUp.clear()
+        main.removeCallbacks(stopLater)
+        audioReminder(false)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
     }
 
@@ -254,55 +335,86 @@ class LinkService : Service() {
 
     // ---------------------------------------------------------------- SENDER
 
+    /**
+     * Telefonen er TCP-server. Skjermen finner den på to måter:
+     *  1) Bluetooth direkte til skjermen (hvis valgt): telefonen forteller sine IP-adresser.
+     *  2) Wi-Fi alene: skjermen er på telefonens hotspot og prøver «ruteren» (= telefonen) selv.
+     */
     @SuppressLint("MissingPermission")
-    private suspend fun senderLoop(address: String, useHotspot: Boolean) {
-        val adapter = btAdapter() ?: return setStatus("Denne enheten har ikke Bluetooth")
+    private suspend fun senderLoop(address: String?, useHotspot: Boolean) = coroutineScope {
         var hs: JSONObject? = null
         if (useHotspot) {
             setStatus("Starter direkte Wi-Fi …")
-            hs = startHotspot() ?: return setStatus("Kunne ikke starte direkte Wi-Fi (slå av vanlig hotspot og prøv igjen)")
+            hs = startHotspot() ?: return@coroutineScope setStatus("Kunne ikke starte direkte Wi-Fi (slå av vanlig hotspot og prøv igjen)")
         }
         val server = try {
             track(ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(Protocol.PORT)) })
         } catch (e: IOException) {
-            return setStatus("Kunne ikke åpne port ${Protocol.PORT}: ${e.message}")
+            return@coroutineScope setStatus("Kunne ikke åpne port ${Protocol.PORT}: ${e.message}")
         }
+        val adapter = btAdapter()
+        if (address != null && adapter != null) launch { btAnnounceLoop(adapter, address, hs) }
+        else setStatus(if (autoStarted) "Startet automatisk – venter på skjermen over Wi-Fi …" else "Venter på skjermen over Wi-Fi/hotspot …")
 
+        server.soTimeout = 2000
+        while (isActive) {
+            val sock = try { runInterruptibleAccept(server) } catch (_: SocketTimeoutException) { continue }
+                catch (e: IOException) { if (!isActive) break; delay(1000); continue }
+            try {
+                runSession(sock, isSender = true)
+            } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+            Hub.connected.value = false
+            if (isActive) setStatus(if (triggersUp.isEmpty() && autoStarted) "Bilen er frakoblet – CarLink stopper om litt"
+                                     else "Frakoblet – venter på skjermen …")
+        }
+    }
+
+    private suspend fun runInterruptibleAccept(server: ServerSocket): Socket = withContext(Dispatchers.IO) { server.accept() }
+
+    /** Forteller skjermen (via Bluetooth) hvor telefonen er på Wi-Fi, til skjermen har koblet seg til. */
+    @SuppressLint("MissingPermission")
+    private suspend fun btAnnounceLoop(adapter: BluetoothAdapter, address: String, hs: JSONObject?) {
+        var fails = 0
         while (coroutineContext.isActive) {
+            if (Hub.connected.value) { fails = 0; delay(2000); continue }
             try {
                 val ips = localIps()
                 if (ips.isEmpty()) {
-                    setStatus("Ingen Wi-Fi-adresse. Koble til Wi-Fi, slå på hotspot, eller bruk «direkte Wi-Fi».")
+                    setStatus("Ingen Wi-Fi-adresse. Slå på hotspot, koble til Wi-Fi, eller bruk «direkte Wi-Fi».")
                     delay(5000); continue
                 }
-                setStatus("Kobler til skjermen via Bluetooth …")
+                if (!adapter.isEnabled) { setStatus("Bluetooth er av – venter på skjermen over Wi-Fi …"); delay(5000); continue }
+                setStatus("Kobler til skjermen …")
                 val msg = JSONObject().put("t", "wifi").put("ips", JSONArray(ips))
                     .put("port", Protocol.PORT).put("name", Build.MODEL)
                 hs?.let { msg.put("ssid", it.getString("ssid")).put("pass", it.getString("pass")).put("sec", it.optString("sec")) }
 
                 adapter.cancelDiscovery()
                 val bt = track(adapter.getRemoteDevice(address).createInsecureRfcommSocketToServiceRecord(Protocol.SERVICE_UUID))
-                bt.connect()
-                val w = bt.outputStream.bufferedWriter()
-                w.write(msg.toString()); w.newLine(); w.flush()
-                setStatus("Venter på at skjermen kobler til over Wi-Fi …")
-                val reply = bt.inputStream.bufferedReader().readLine()?.let { JSONObject(it) }
-                close(bt)
-                if (reply?.optString("t") != "ok") {
-                    throw IOException(reply?.optString("why")?.ifBlank { null } ?: "Skjermen nådde ikke telefonen over Wi-Fi")
-                }
-                server.soTimeout = 10_000
-                val sock = server.accept()
-                Hub.peerName.value = reply.optString("name")
-                runSession(sock, isSender = true)
-                setStatus("Frakoblet – prøver igjen …")
+                try {
+                    bt.connect()
+                    val w = bt.outputStream.bufferedWriter()
+                    w.write(msg.toString()); w.newLine(); w.flush()
+                    setStatus("Venter på at skjermen kobler til over Wi-Fi …")
+                    val reply = bt.inputStream.bufferedReader().readLine()?.let { JSONObject(it) }
+                    if (reply?.optString("t") == "busy") { delay(5000); continue }
+                    if (reply?.optString("t") != "ok") {
+                        throw IOException(reply?.optString("why")?.ifBlank { null } ?: "Skjermen nådde ikke telefonen over Wi-Fi")
+                    }
+                    Hub.peerName.value = reply.optString("name")
+                } finally { close(bt) }
+                // Vent til økta er i gang (eller gi opp etter 10 s)
+                var waited = 0
+                while (!Hub.connected.value && waited < 10_000) { delay(250); waited += 250 }
+                fails = 0
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                setStatus("Feil: ${e.message ?: e.javaClass.simpleName}. Prøver igjen …")
+                fails++
+                if (!Hub.connected.value) setStatus("Fant ikke skjermen via Bluetooth – prøver også Wi-Fi …")
             }
-            Hub.connected.value = false
-            delay(3000)
+            // Prøv sjeldnere når skjermen ikke svarer (sparer strøm)
+            delay(if (fails > 3) 15_000L else 3_000L)
         }
     }
 
@@ -350,19 +462,48 @@ class LinkService : Service() {
 
     // ---------------------------------------------------------------- MOTTAKER
 
+    /**
+     * Skjermen venter på telefonen på to måter samtidig:
+     *  - Bluetooth: telefonen sier fra og forteller IP-adressen sin.
+     *  - Wi-Fi: hvis skjermen er på telefonens hotspot, prøver den «ruteren» (= telefonen) hvert 3. sekund.
+     *    Da trengs ingen Bluetooth mellom skjermen og telefonen i det hele tatt.
+     */
+    private suspend fun receiverLoop() = coroutineScope {
+        val incoming = Channel<Pair<Socket, Network?>>(Channel.UNLIMITED)
+        btAdapter()?.let { ad -> launch { btListenLoop(ad, incoming) } }
+        launch { wifiProbeLoop(incoming) }
+        setStatus("Venter på telefonen …")
+        for ((sock, net) in incoming) {
+            try {
+                prefs().edit().putString("lastPhoneIp", sock.inetAddress.hostAddress).apply()
+                sessionNetwork = net
+                runSession(sock, isSender = false)
+            } catch (e: CancellationException) { throw e } catch (_: Exception) {
+            } finally {
+                sessionNetwork = null
+                Hub.connected.value = false
+                if (net != null) releaseWifi()
+                rxBusy.set(false)
+            }
+            setStatus("Frakoblet – venter på telefonen …")
+        }
+    }
+
     @SuppressLint("MissingPermission")
-    private suspend fun receiverLoop() {
-        val adapter = btAdapter() ?: return setStatus("Denne enheten har ikke Bluetooth")
+    private suspend fun btListenLoop(adapter: BluetoothAdapter, incoming: Channel<Pair<Socket, Network?>>) {
         while (coroutineContext.isActive) {
             try {
-                if (!adapter.isEnabled) { setStatus("Slå på Bluetooth"); delay(4000); continue }
-                setStatus("Venter på telefonen via Bluetooth …")
+                if (!adapter.isEnabled) { delay(4000); continue }
                 val ss = track(adapter.listenUsingInsecureRfcommWithServiceRecord("CarLink", Protocol.SERVICE_UUID))
-                val bt = track(ss.accept())
+                val bt = track(withContext(Dispatchers.IO) { ss.accept() })
                 close(ss)
                 val reader = bt.inputStream.bufferedReader()
                 val writer = bt.outputStream.bufferedWriter()
                 val msg = JSONObject(reader.readLine() ?: throw IOException("Bluetooth lukket"))
+                if (rxBusy.get()) {
+                    writer.write(JSONObject().put("t", "busy").toString()); writer.newLine(); writer.flush()
+                    delay(300); close(bt); continue
+                }
 
                 var network: Network? = null
                 val ssid = msg.optString("ssid")
@@ -386,26 +527,53 @@ class LinkService : Service() {
                     if (sock != null) break
                     delay(1500)
                 }
+                val claimed = sock != null && rxBusy.compareAndSet(false, true)
+                if (sock != null && !claimed) runCatching { sock.close() }
                 val reply = JSONObject().put("t", if (sock != null) "ok" else "fail").put("name", Build.MODEL)
                 if (sock == null) reply.put("why", "Skjermen fant ikke telefonen på Wi-Fi. Er begge på samme nett?")
                 writer.write(reply.toString()); writer.newLine(); writer.flush()
                 delay(300)
                 close(bt)
-                if (sock == null) throw IOException("Fant ikke telefonen på Wi-Fi – er begge på samme nett?")
-
-                Hub.peerName.value = msg.optString("name")
-                sessionNetwork = network
-                runSession(sock, isSender = false)
-                sessionNetwork = null
-                setStatus("Frakoblet")
+                if (sock == null) { setStatus("Fant ikke telefonen på Wi-Fi – er begge på samme nett?"); if (network != null) releaseWifi() }
+                else if (claimed) { Hub.peerName.value = msg.optString("name"); incoming.send(sock to network) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                setStatus("Feil: ${e.message ?: e.javaClass.simpleName}")
+                if (!rxBusy.get()) setStatus("Bluetooth: ${e.message ?: e.javaClass.simpleName}")
+                delay(2000)
             }
-            Hub.connected.value = false
-            releaseWifi()
-            delay(2000)
+        }
+    }
+
+    /** Prøver telefonen direkte på Wi-Fi: hotspot-«ruteren» og siste kjente adresse. Billig: ett forsøk hvert 3. s. */
+    private suspend fun wifiProbeLoop(incoming: Channel<Pair<Socket, Network?>>) {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        while (coroutineContext.isActive) {
+            if (!rxBusy.get()) {
+                val candidates = LinkedHashMap<String, Network?>()
+                try {
+                    @Suppress("DEPRECATION")
+                    for (n in cm.allNetworks) {
+                        val caps = cm.getNetworkCapabilities(n) ?: continue
+                        if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) continue
+                        val lp = cm.getLinkProperties(n) ?: continue
+                        lp.routes.mapNotNull { it.gateway as? Inet4Address }
+                            .filter { !it.isAnyLocalAddress }.forEach { candidates[it.hostAddress!!] = n }
+                        if (Build.VERSION.SDK_INT >= 30) (lp.dhcpServerAddress as? Inet4Address)?.let { candidates[it.hostAddress!!] = n }
+                    }
+                } catch (_: Exception) {}
+                prefs().getString("lastPhoneIp", null)?.let { if (it !in candidates) candidates[it] = null }
+                for ((ip, net) in candidates) {
+                    if (rxBusy.get()) break
+                    try {
+                        val s = net?.socketFactory?.createSocket() ?: Socket()
+                        withContext(Dispatchers.IO) { s.connect(InetSocketAddress(ip, Protocol.PORT), 1200) }
+                        if (rxBusy.compareAndSet(false, true)) { incoming.send(s to null); break }
+                        else runCatching { s.close() }
+                    } catch (_: IOException) {}
+                }
+            }
+            delay(3000)
         }
     }
 
@@ -453,6 +621,8 @@ class LinkService : Service() {
             val w = sock.getOutputStream().bufferedWriter()
             for (line in out) { w.write(line); w.newLine(); w.flush() }
         }
+        out.trySend(JSONObject().put("t", "hello").put("name", Build.MODEL).toString())
+        if (isSender && autoStarted && projection == null) audioReminder(true)
         val pingJob = launch { while (isActive) { delay(5000); out.trySend("{\"t\":\"ping\"}") } }
         val feedJob = if (isSender) launch(Dispatchers.Main) { senderFeeds() } else null
         if (isSender) startAudioIfReady()
@@ -470,7 +640,7 @@ class LinkService : Service() {
             Hub.connected.value = false
             Hub.remoteMedia.value = null
             Hub.remoteNav.value = null
-            if (isSender) audioJob?.cancel() else { stopAudioPlayback(); stopMockGps() }
+            if (isSender) { audioJob?.cancel(); audioReminder(false) } else { stopAudioPlayback(); stopMockGps() }
             holdLocks(false)
             feedJob?.cancel(); pingJob.cancel(); writerJob.cancel()
             out.close()
@@ -480,6 +650,10 @@ class LinkService : Service() {
 
     private fun handle(o: JSONObject, isSender: Boolean) {
         when (o.optString("t")) {
+            "hello" -> o.optString("name").takeIf { it.isNotBlank() }?.let {
+                Hub.peerName.value = it
+                setStatus(if (isSender) "Tilkoblet skjermen $it" else "Tilkoblet telefonen $it")
+            }
             "cmd" -> if (isSender) MediaListener.control(o.optString("a"))
             "media" -> if (!isSender) {
                 Hub.remoteMedia.value = if (o.optBoolean("none")) null else Protocol.parseMedia(o, Hub.remoteMedia.value)
@@ -560,6 +734,7 @@ class LinkService : Service() {
     private fun startAudioCapture(code: Int, data: Intent, mute: Boolean) {
         if (mode != "sender") { Hub.status.value = "Koble til skjermen først"; return }
         if (!goForeground(true, audio = true)) return
+        audioReminder(false)
         stopAudioCapture()
         val mp = try {
             getSystemService(MediaProjectionManager::class.java).getMediaProjection(code, data)

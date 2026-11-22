@@ -46,6 +46,10 @@ class SenderActivity : AppCompatActivity() {
     private var devices: List<Pair<String, String>> = emptyList() // navn, adresse
     private lateinit var audioBtn: TextView
     private lateinit var muteBox: CheckBox
+    private lateinit var autoBox: CheckBox
+    private lateinit var triggerList: LinearLayout
+    private lateinit var bgLocBtn: TextView
+    private val bgLocLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { updateBgLoc() }
 
     private val projLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val d = r.data
@@ -74,7 +78,37 @@ class SenderActivity : AppCompatActivity() {
         col.addView(batteryBtn, wrap(8))
         col.addView(label("Samsung: velg også «Ubegrenset» under Innstillinger → Apper → CarLink Sender → Batteri.", 12f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) })
 
-        col.section("2 · Velg skjermen (paret via Bluetooth)")
+        col.section("2 · Automatisk start og stopp")
+        autoBox = CheckBox(this).apply {
+            text = "Start CarLink av seg selv når telefonen kobles til en av enhetene under"
+            setTextColor(C.TEXT); textSize = 14f
+            buttonTintList = ColorStateList.valueOf(C.ACCENT)
+            isChecked = prefs().getBoolean("auto", false)
+            setOnCheckedChangeListener { _, c ->
+                prefs().edit().putBoolean("auto", c).apply()
+                if (c) { if (!batteryOk()) askBattery(); BtTrigger.checkNow(this@SenderActivity) }
+            }
+        }
+        col.addView(autoBox, wrap())
+        triggerList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; background = rounded(C.PANEL, 14); setPadding(10.dp, 6.dp, 10.dp, 6.dp)
+        }
+        col.addView(triggerList, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 8.dp })
+        col.addView(label(
+            "Velg f.eks. bilens eget Bluetooth. Når telefonen kobles til, starter CarLink, og skjermen finner telefonen selv " +
+                "når den er på telefonens hotspot. CarLink stopper 2 minutter etter at Bluetooth er borte.",
+            12f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) })
+        bgLocBtn = pill("Tillat posisjon «hele tiden» (kart når CarLink starter selv)") { askBgLoc() }
+        col.addView(bgLocBtn, wrap(8))
+        col.addView(CheckBox(this).apply {
+            text = "Spør om lyd over Wi-Fi når CarLink starter av seg selv (varsel)"
+            setTextColor(C.TEXT); textSize = 13f
+            buttonTintList = ColorStateList.valueOf(C.ACCENT)
+            isChecked = prefs().getBoolean("audioReminder", false)
+            setOnCheckedChangeListener { _, c -> prefs().edit().putBoolean("audioReminder", c).apply() }
+        }, wrap(6))
+
+        col.section("3 · Skjermen (valgfritt Bluetooth til skjermen)")
         spinner = Spinner(this).apply { background = rounded(C.PANEL, 14); setPadding(8.dp, 8.dp, 8.dp, 8.dp) }
         col.addView(spinner, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         col.addView(label("Finner du ikke skjermen? Par enhetene i Bluetooth-innstillingene først.", 12f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) })
@@ -93,7 +127,7 @@ class SenderActivity : AppCompatActivity() {
         row.addView(pill("Koble fra") { LinkService.stop(this) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { leftMargin = 10.dp })
         col.addView(row, wrap(12))
 
-        col.section("Lyd over Wi-Fi")
+        col.section("Lyd over Wi-Fi (valgfritt)")
         col.addView(label("Musikken spilles av på skjermen i stedet for telefonen. Android spør om lov til lydopptak hver gang.", 12f, C.SUB))
         muteBox = CheckBox(this).apply {
             text = "Demp telefonen mens lyden går til skjermen"
@@ -162,6 +196,29 @@ class SenderActivity : AppCompatActivity() {
 
         val miss = Perms.missing(this, Perms.forRole(true))
         if (miss.isNotEmpty()) permLauncher.launch(miss.toTypedArray())
+        if (intent?.getBooleanExtra("carlink_audio", false) == true) toggleAudio()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra("carlink_audio", false)) toggleAudio()
+    }
+
+    private fun bgLocOk() = Perms.has(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+
+    private fun updateBgLoc() {
+        val ok = bgLocOk()
+        bgLocBtn.text = if (ok) "✓ Posisjon tillatt hele tiden" else "Tillat posisjon «hele tiden» (kart når CarLink starter selv)"
+        bgLocBtn.background = rounded(if (ok) C.PANEL2 else if (autoBox.isChecked) C.WARN else C.PANEL2, 22)
+    }
+
+    private fun askBgLoc() {
+        if (bgLocOk()) return
+        if (!Perms.has(this, Manifest.permission.ACCESS_FINE_LOCATION)) {
+            permLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)); return
+        }
+        // Android sender brukeren til innstillingene: velg «Tillat hele tiden»
+        bgLocLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
     }
 
     override fun onResume() {
@@ -172,7 +229,9 @@ class SenderActivity : AppCompatActivity() {
         val bat = batteryOk()
         batteryBtn.text = if (bat) "✓ Kan kjøre i bakgrunnen" else "Tillat at CarLink kjører i bakgrunnen"
         batteryBtn.background = rounded(if (bat) C.PANEL2 else C.WARN, 22)
+        updateBgLoc()
         loadDevices()
+        BtTrigger.checkNow(this)
     }
 
     @SuppressLint("MissingPermission")
@@ -181,20 +240,42 @@ class SenderActivity : AppCompatActivity() {
             getSystemService(BluetoothManager::class.java)?.adapter?.bondedDevices
                 ?.map { (it.name ?: it.address) to it.address }?.sortedBy { it.first } ?: emptyList()
         } catch (_: SecurityException) { emptyList() }
-        val names = devices.map { it.first }.ifEmpty { listOf("Ingen parede enheter") }
+        // Første valg: ingen Bluetooth til skjermen – den finner telefonen via hotspot/Wi-Fi
+        val names = listOf("Ingen – skjermen finner telefonen via hotspot") + devices.map { it.first }
         spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
         val last = prefs().getString("btAddr", null)
-        devices.indexOfFirst { it.second == last }.takeIf { it >= 0 }?.let { spinner.setSelection(it) }
+        spinner.setSelection(devices.indexOfFirst { it.second == last } + 1)
+        spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
+                prefs().edit().putString("btAddr", devices.getOrNull(pos - 1)?.second ?: "").apply()
+            }
+            override fun onNothingSelected(p: android.widget.AdapterView<*>?) {}
+        }
+
+        // Utløsere: flere enheter kan velges
+        triggerList.removeAllViews()
+        val chosen = BtTrigger.triggers(this).toMutableSet()
+        if (devices.isEmpty()) triggerList.addView(label("Ingen parede Bluetooth-enheter ennå", 13f, C.SUB).apply { setPadding(4.dp, 8.dp, 0, 8.dp) })
+        for ((name, addr) in devices) {
+            triggerList.addView(CheckBox(this).apply {
+                text = name; setTextColor(C.TEXT); textSize = 14f
+                buttonTintList = ColorStateList.valueOf(C.ACCENT)
+                isChecked = addr in chosen
+                setOnCheckedChangeListener { _, c ->
+                    if (c) chosen += addr else chosen -= addr
+                    prefs().edit().putStringSet("triggers", HashSet(chosen)).apply()
+                }
+            })
+        }
     }
 
     private fun connect() {
-        val i = spinner.selectedItemPosition
-        if (devices.isEmpty() || i !in devices.indices) { toast("Velg en paret skjerm først"); return }
+        val i = spinner.selectedItemPosition - 1   // 0 = ingen Bluetooth til skjermen
         val miss = Perms.missing(this, Perms.forRole(true))
         if (miss.isNotEmpty()) { permLauncher.launch(miss.toTypedArray()); return }
         if (!MediaListener.isEnabled(this)) toast("Tips: gi varseltilgang for å dele musikk")
-        val addr = devices[i].second
-        prefs().edit().putString("btAddr", addr).putBoolean("hotspot", hotspot.isChecked).apply()
+        val addr = devices.getOrNull(i)?.second
+        prefs().edit().putString("btAddr", addr ?: "").putBoolean("hotspot", hotspot.isChecked).apply()
         LinkService.startSender(this, addr, hotspot.isChecked)
     }
 

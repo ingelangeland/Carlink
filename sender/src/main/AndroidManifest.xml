@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- GPS også når CarLink starter av seg selv (bilens Bluetooth) -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
@@ -71,6 +73,14 @@
             android:name="no.carlink.LinkService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|location|mediaProjection|microphone" />
+
+        <!-- Starter/stopper CarLink når telefonen kobles til/fra valgte Bluetooth-enheter -->
+        <receiver android:name="no.carlink.BtTrigger" android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name="no.carlink.MediaListener"

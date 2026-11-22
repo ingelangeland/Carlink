@@ -72,9 +72,16 @@ object Hub {
     /** Settes av demomodus, så knappene virker uten telefon. */
     @Volatile var demoHandler: ((String) -> Unit)? = null
 
+    /**
+     * Skal knappene/visningen følge telefonens musikk? Ja hvis telefonen spiller, eller hvis
+     * ingenting spilles lokalt. (Tidal på bilskjermen vinner når den spiller.)
+     */
+    fun useRemote(c: Boolean, r: Media?, l: Media?): Boolean =
+        c && r != null && (r.playing || l == null || !l.playing)
+
     fun mediaCommand(action: String) {
         demoHandler?.let { it(action); return }
-        if (connected.value && remoteMedia.value != null) {
+        if (useRemote(connected.value, remoteMedia.value, localMedia.value)) {
             send(JSONObject().put("t", "cmd").put("a", action))
         } else {
             MediaListener.control(action)
