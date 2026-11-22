@@ -3,8 +3,9 @@
 # Lager skjermbilder av alle visninger, måler ytelse og ser etter krasj.
 set -u
 # Alle adb-kall får en tidsgrense, så simuleringen aldri kan henge
-adb() { timeout 120 command adb "$@"; }
-alive() { [ "$(timeout 10 command adb get-state 2>/dev/null)" = "device" ]; }
+ADB_BIN="$(command -v adb)"
+adb() { timeout 120 "$ADB_BIN" "$@"; }
+alive() { [ "$(timeout 10 "$ADB_BIN" get-state 2>/dev/null)" = "device" ]; }
 OUT=sim
 mkdir -p "$OUT"
 L=no.carlink.launcher/no.carlink.ReceiverActivity
