@@ -1,6 +1,7 @@
 package no.carlink
 
 import android.bluetooth.BluetoothAdapter
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
@@ -10,6 +11,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextClock
 import android.widget.TextView
@@ -44,6 +46,10 @@ class ReceiverActivity : AppCompatActivity() {
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         LinkService.startReceiver(this)
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(UiScale.wrap(newBase))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -155,7 +161,15 @@ class ReceiverActivity : AppCompatActivity() {
         }
         rail.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
         rail.addView(railItem(R.drawable.ic_tune, "Mer") { showSettings() })
-        return rail
+        // Kan rulles hvis skjermen er for lav til alt (f.eks. 720 px høyde)
+        return ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            background = rail.background
+            rail.background = null
+            addView(rail, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        }
     }
 
     private fun railItem(icon: Int, text: String, click: () -> Unit): View = LinearLayout(this).apply {
@@ -287,6 +301,7 @@ class ReceiverActivity : AppCompatActivity() {
             "Varseltilgang (vis musikk som spilles på skjermen selv)",
             "Velg CarLink som standard hjemmeskjerm",
             "Demomodus (simulert telefon): " + if (DemoFeeder.active) "PÅ" else "AV",
+            "Størrelse på tekst og knapper: " + UiScale.label(this),
         )
         AlertDialog.Builder(this)
             .setTitle(Hub.status.value)
@@ -307,9 +322,23 @@ class ReceiverActivity : AppCompatActivity() {
                         LinkService.stop(this); prefs().edit().putBoolean("demo", true).apply()
                         DemoFeeder.start(this)
                     }
+                    8 -> chooseUiScale()
                 }
             }
             .setNegativeButton("Lukk", null)
+            .show()
+    }
+
+    private fun chooseUiScale() {
+        val cur = UiScale.factors.indexOfFirst { it == UiScale.factor(this) }.coerceAtLeast(1)
+        AlertDialog.Builder(this)
+            .setTitle("Størrelse på tekst og knapper")
+            .setSingleChoiceItems(UiScale.labels, cur) { d, which ->
+                prefs().edit().putFloat("uiScale", UiScale.factors[which]).apply()
+                d.dismiss()
+                recreate()
+            }
+            .setNegativeButton("Avbryt", null)
             .show()
     }
 

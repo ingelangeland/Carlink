@@ -15,9 +15,11 @@ S=no.carlink.sender/no.carlink.SenderActivity
 # Koordinater regnes ut fra skjermstørrelse og tetthet (dp → piksler)
 DENS="${DENS:-240}"
 read W H < <(timeout 30 "$ADB_BIN" shell wm size | tail -1 | sed 's/.*: //; s/x/ /')
-dp() { awk -v d="$1" -v s="$DENS" 'BEGIN{printf "%d", d*s/160}'; }
+# Launcheren skalerer selv opp lave tettheter (skjermhøyde ≈ 500 dp), regn med den effektive
+EFF=$(awk -v h="$H" -v w="$W" -v s="$DENS" 'BEGIN{m=(h<w)?h:w; if (m*160/s > 600) printf "%d", int(m*160/500); else print s}')
+dp() { awk -v d="$1" -v s="$EFF" 'BEGIN{printf "%d", d*s/160}'; }
 # Skillelinjen mellom panel 1 og 2 i delt visning (meny 88dp, marg 10dp, 45 % / 30 % / 25 %)
-DIV_X=$(awk -v W="$W" -v s="$DENS" 'BEGIN{k=s/160; avail=W-(88+20)*k-2*14*k; printf "%d", (98)*k + 0.45*avail + 7*k}')
+DIV_X=$(awk -v W="$W" -v s="$EFF" 'BEGIN{k=s/160; avail=W-(88+20)*k-2*14*k; printf "%d", (98)*k + 0.45*avail + 7*k}')
 DIV_Y=$((H / 2))
 # «Neste låt» i musikklinjen
 NEXT_X=$(dp 187); NEXT_Y=$((H - $(dp 62)))
@@ -36,7 +38,10 @@ adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell svc power stayon true
 adb shell wm density "$DENS"
-echo "Skjerm: ${W}x${H} @ ${DENS} dpi"
+echo "Skjerm: ${W}x${H} @ ${DENS} dpi (CarLink bruker ${EFF})"
+# Skjul emulatorens egne systemdialoger så de ikke dekker skjermbildene
+adb shell settings put global hide_error_dialogs 1
+adb shell settings put secure immersive_mode_confirmations confirmed
 adb shell input keyevent 82
 adb shell wm size
 

@@ -16,7 +16,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 
-val Int.dp: Int get() = (this * Resources.getSystem().displayMetrics.density + 0.5f).toInt()
+/** Skalering for hele grensesnittet. Bilskjermen kan overstyre den (se UiScale i launcheren). */
+object Ui {
+    @JvmStatic var density: Float = Resources.getSystem().displayMetrics.density
+}
+
+val Int.dp: Int get() = (this * Ui.density + 0.5f).toInt()
 
 /** Fargepalett (mørkt bil-tema). */
 object C {
