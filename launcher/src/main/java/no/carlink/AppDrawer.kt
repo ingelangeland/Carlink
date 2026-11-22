@@ -128,6 +128,8 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
     }
 
     /** p = 0 (skjult) … 1 (helt åpen): uskarphet, røyk og apper følger hverandre. */
+    private var blurStep = -1
+
     private fun setProgress(p: Float) {
         progress = p
         smoke.alpha = p
@@ -135,8 +137,14 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
         val s = 0.94f + 0.06f * p
         panel.scaleX = s; panel.scaleY = s
         if (Build.VERSION.SDK_INT >= 31) {
-            val r = 26f * resources.displayMetrics.density * p
-            blurTarget.setRenderEffect(if (r < 0.5f) null else RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP))
+            // Uskarpheten oppdateres i 5 trinn i stedet for hvert bilde: bakgrunnen står stille mellom
+            // trinnene og trenger ikke regnes ut på nytt → jevn animasjon også på svakere bilskjermer
+            val step = kotlin.math.ceil(p * 5f).toInt().coerceIn(0, 5)
+            if (step != blurStep) {
+                blurStep = step
+                val r = 26f * resources.displayMetrics.density * step / 5f
+                blurTarget.setRenderEffect(if (step == 0) null else RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP))
+            }
         }
     }
 

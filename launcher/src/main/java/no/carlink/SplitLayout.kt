@@ -28,6 +28,11 @@ class SplitLayout(ctx: Context) : ViewGroup(ctx) {
     private val gripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF5F6673.toInt() }
     private val gripActive = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = C.ACCENT }
     private val rect = RectF()
+    // Under draing: bare en lett forhåndsvisning (linje + skygge); panelene endrer størrelse når du slipper.
+    // Da slipper kart og musikk å tegnes om for hver fingerbevegelse → helt jevn dra.
+    private var previewWeights: FloatArray? = null
+    private val previewLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = C.ACCENT }
+    private val previewShade = Paint().apply { color = 0x55000000 }
 
     init { setWillNotDraw(false) }
 
@@ -83,11 +88,31 @@ class SplitLayout(ctx: Context) : ViewGroup(ctx) {
         return if (horizontal) c.right + gap / 2f else c.bottom + gap / 2f
     }
 
+    /** Hvor skillelinje i havner med forhåndsvisningen (piksler). */
+    private fun previewCenter(i: Int): Float {
+        val w = previewWeights ?: return dividerCenter(i)
+        val n = childCount
+        val avail = ((if (horizontal) width else height) - gap * (n - 1)).toFloat()
+        var pos = 0f
+        for (k in 0..i) pos += w[k] * avail + gap
+        return pos - gap / 2f
+    }
+
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
         val len = 56.dp.toFloat(); val th = 5.dp.toFloat()
+        if (previewWeights != null && dragIndex >= 0) {
+            val c = previewCenter(dragIndex); val lw = 3.dp.toFloat()
+            if (horizontal) {
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), previewShade)
+                canvas.drawRoundRect(c - lw / 2, 8.dp.toFloat(), c + lw / 2, height - 8.dp.toFloat(), lw, lw, previewLine)
+            } else {
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), previewShade)
+                canvas.drawRoundRect(8.dp.toFloat(), c - lw / 2, width - 8.dp.toFloat(), c + lw / 2, lw, lw, previewLine)
+            }
+        }
         for (i in 0 until childCount - 1) {
-            val c = dividerCenter(i)
+            val c = if (i == dragIndex) previewCenter(i) else dividerCenter(i)
             if (horizontal) rect.set(c - th / 2, height / 2f - len / 2, c + th / 2, height / 2f + len / 2)
             else rect.set(width / 2f - len / 2, c - th / 2, width / 2f + len / 2, c + th / 2)
             canvas.drawRoundRect(rect, th, th, if (i == dragIndex) gripActive else gripPaint)
@@ -118,7 +143,10 @@ class SplitLayout(ctx: Context) : ViewGroup(ctx) {
             }
             MotionEvent.ACTION_MOVE -> if (dragIndex >= 0) drag(if (horizontal) ev.x else ev.y)
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (dragIndex >= 0) {
-                dragIndex = -1; invalidate(); onWeightsChanged?.invoke(weights.copyOf())
+                dragIndex = -1
+                previewWeights?.let { weights = it; requestLayout() }   // én omlegging, når du slipper
+                previewWeights = null
+                invalidate(); onWeightsChanged?.invoke(weights.copyOf())
             }
         }
         return true
@@ -129,7 +157,7 @@ class SplitLayout(ctx: Context) : ViewGroup(ctx) {
         val total = if (horizontal) width else height
         val avail = (total - gap * (n - 1)).toFloat()
         if (avail <= 0f || dragIndex >= n - 1) return
-        val w = eff(n).copyOf()
+        val w = (previewWeights ?: eff(n)).copyOf()
         val i = dragIndex
         var start = 0f
         for (k in 0 until i) start += w[k] * avail + gap
@@ -137,7 +165,7 @@ class SplitLayout(ctx: Context) : ViewGroup(ctx) {
         if (pair < 2 * minFrac) return
         val ni = ((p - gap / 2f - start) / avail).coerceIn(minFrac, pair - minFrac)
         w[i] = ni; w[i + 1] = pair - ni
-        weights = w
-        requestLayout(); invalidate()
+        previewWeights = w
+        invalidate()   // bare forhåndsvisningen tegnes på nytt
     }
 }
