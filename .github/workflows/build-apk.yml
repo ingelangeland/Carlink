@@ -70,10 +70,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { sim: "16x9", skin: "1920x1080", gpu: "swiftshader_indirect", tag: "-alt",          extra: "" }
-          - { sim: "16x9", skin: "1920x1080", gpu: "swiftshader_indirect", tag: "-uten-bolger", extra: "--ez noviz true" }
-          - { sim: "16x9", skin: "1920x1080", gpu: "swiftshader_indirect", tag: "-uten-cover",  extra: "--ez noart true" }
-          - { sim: "21x9", skin: "1920x824",  gpu: "guest",                tag: "-gpu-guest",   extra: "" }
+          - { sim: "21x9", skin: "1920x824",  gpu: "swiftshader_indirect", tag: "", extra: "" }
+          - { sim: "16x9", skin: "1920x1080", gpu: "swiftshader_indirect", tag: "", extra: "" }
     steps:
       - uses: actions/checkout@v4
 

@@ -58,6 +58,9 @@ class VisualizerView(ctx: Context) : View(ctx) {
     }
 
     init {
+        // Tegnes i et eget programvarelag: et lite felt som er billig å tegne med prosessoren,
+        // og som unngår feil i enkelte grafikkdrivere (oppdaget i emulator-simuleringen).
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
         setOnClickListener {
             style = if (style == Style.WAVE) Style.CAPSULES else Style.WAVE
             context.prefs().edit().putString("vizStyle", style.name).apply()
