@@ -25,11 +25,17 @@ object UiScale {
         runCatching {
             @Suppress("DEPRECATION")
             ctx.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY).getRealMetrics(dm)
+        }.onFailure { android.util.Log.w("CarLinkUi", "getRealMetrics feilet", it) }
+        if (dm.widthPixels <= 0) {
+            val m = ctx.resources.displayMetrics
+            dm.widthPixels = m.widthPixels; dm.heightPixels = m.heightPixels
         }
         val shortPx = min(dm.widthPixels, dm.heightPixels).takeIf { it > 0 } ?: return sys
         val heightDp = shortPx * 160 / sys
         val auto = if (heightDp > 600) shortPx * 160 / 500 else sys
-        return (auto * factor(ctx)).toInt().coerceIn(120, 640)
+        val out = (auto * factor(ctx)).toInt().coerceIn(120, 640)
+        android.util.Log.i("CarLinkUi", "skjerm ${dm.widthPixels}x${dm.heightPixels} system=$sys dpi -> bruker $out dpi")
+        return out
     }
 
     /** Lager en kontekst med justert tetthet (brukes i attachBaseContext). */
@@ -38,6 +44,7 @@ object UiScale {
         val dpi = dpi(base)
         Ui.density = dpi / 160f
         if (dpi == old.densityDpi) return base
+        android.util.Log.i("CarLinkUi", "overstyrer tetthet ${old.densityDpi} -> $dpi")
         val cfg = Configuration(old)
         cfg.densityDpi = dpi
         cfg.screenWidthDp = old.screenWidthDp * old.densityDpi / dpi

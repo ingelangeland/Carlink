@@ -65,6 +65,8 @@ adb install -r -g ut/CarLink-bilskjerm.apk
 adb install -r -g ut/CarLink-Sender-telefon.apk
 
 go home;  shot 01-hjem 12
+adb logcat -d -s CarLinkUi:* > "$OUT/ui.txt" 2>&1 || true
+adb shell wm density >> "$OUT/ui.txt" 2>&1 || true
           shot 02-hjem-litt-senere 3
 go nav;   shot 03-hjem-navigasjon 5
 go split; shot 04-delt-skjerm 15
@@ -103,6 +105,7 @@ adb logcat -d > "$OUT/logcat.txt"
   echo; echo "Minne (TOTAL PSS i kB):"
   echo -n "  bilskjerm: "; grep -m1 "TOTAL PSS" "$OUT/minne-bilskjerm.txt" || true
   [ -f "$OUT/minne-telefon.txt" ] && { echo -n "  telefon:   "; grep -m1 "TOTAL PSS" "$OUT/minne-telefon.txt"; }
+  echo; echo "Skjermskalering:"; cat "$OUT/ui.txt" 2>/dev/null | tail -6
   echo; echo "APK-størrelser:"; ls -l ut/*.apk | awk '{printf "  %s  %.1f MB\n", $9, $5/1048576}'
 } > "$OUT/RAPPORT-$SIM$TAG.txt"
 cat "$OUT/RAPPORT-$SIM$TAG.txt"
