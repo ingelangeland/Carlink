@@ -172,13 +172,14 @@ class ReceiverActivity : AppCompatActivity() {
             .mapNotNull { runCatching { PaneType.valueOf(it) }.getOrNull() }.take(3)
         panes.clear(); panes.addAll(list.ifEmpty { listOf(PaneType.MAP) })
         val w = p.getString("weights", null)?.split(",")?.mapNotNull { it.toFloatOrNull() }?.toFloatArray()
-        rebuild(if (w != null && w.size == panes.size) w else null)
+        // Panelene (med kart) lages først når delt visning faktisk vises → lettere oppstart
+        lastWeights = if (w != null && w.size == panes.size) w else null
     }
 
     private fun saveState() {
         prefs().edit()
             .putString("panes", panes.joinToString(",") { it.name })
-            .putString("weights", split.weights.joinToString(","))
+            .putString("weights", (if (split.childCount > 0) split.weights else lastWeights ?: split.weights).joinToString(","))
             .apply()
     }
 
