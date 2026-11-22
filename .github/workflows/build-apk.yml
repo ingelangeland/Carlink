@@ -1,3 +1,5 @@
+# Bygger begge appene (CarLink til bilskjermen og CarLink Sender til telefonen) automatisk.
+# Resultatet legges ut som en «Release» med navnet «Siste versjon», der APK-filene kan lastes ned direkte.
 name: Bygg APK
 
 on:
@@ -13,10 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Prosjektet kan lastes opp som én fil (CarLink.zip). Den pakkes ut her.
       - name: Pakk ut CarLink.zip
         run: |
-          if [ -f CarLink.zip ]; then
-            unzip -q -o CarLink.zip -d /tmp/prosjekt
+          ZIP=$(ls -t CarLink*.zip 2>/dev/null | head -1)
+          if [ -n "$ZIP" ]; then
+            echo "Pakker ut $ZIP"
+            unzip -q -o "$ZIP" -d /tmp/prosjekt
             cp -r /tmp/prosjekt/CarLink/. .
           fi
           ls -la
@@ -26,11 +31,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
+
+      - name: Godta Android-lisenser
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Bygg appene
         run: gradle :launcher:assembleDebug :sender:assembleDebug --stacktrace
@@ -55,5 +61,5 @@ jobs:
           make_latest: true
           files: ut/*.apk
           body: |
-            CarLink-bilskjerm.apk – installeres på skjermen i bilen.
-            CarLink-Sender-telefon.apk – installeres på telefonen.
+            **CarLink-bilskjerm.apk** – installeres på skjermen i bilen.
+            **CarLink-Sender-telefon.apk** – installeres på telefonen.

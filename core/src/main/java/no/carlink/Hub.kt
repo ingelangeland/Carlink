@@ -1,0 +1,79 @@
+package no.carlink
+
+import android.graphics.Bitmap
+import android.os.SystemClock
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import org.json.JSONObject
+
+/** Felles tilstand i appen – deles mellom tjenesten og skjermene. */
+object Hub {
+    data class Media(
+        val title: String = "",
+        val artist: String = "",
+        val album: String = "",
+        val playing: Boolean = false,
+        val durationMs: Long = 0,
+        val positionMs: Long = 0,
+        val updatedAt: Long = SystemClock.elapsedRealtime(),
+        val art: Bitmap? = null,
+        val artId: Int = 0,
+        val app: String = "",
+    ) {
+        fun currentPosition(): Long {
+            if (!playing) return positionMs
+            val p = positionMs + (SystemClock.elapsedRealtime() - updatedAt)
+            return if (durationMs > 0) p.coerceAtMost(durationMs) else p
+        }
+    }
+
+    data class Loc(
+        val lat: Double, val lon: Double, val bearing: Float, val speed: Float, val hasBearing: Boolean,
+        val accuracy: Float = 5f, val altitude: Double = 0.0,
+    )
+
+    /** Neste manøver fra Google Maps-navigasjonen på telefonen. */
+    data class NavInfo(val title: String, val text: String, val sub: String, val icon: Bitmap?, val iconId: Int)
+
+    val status = MutableStateFlow("Ikke startet")
+    val connected = MutableStateFlow(false)
+    val peerName = MutableStateFlow("")
+    /** Sender: lyd strømmes ut. Mottaker: lyd fra telefonen spilles av her. */
+    val audioStreaming = MutableStateFlow(false)
+
+    /** Musikk som spilles på denne enheten (via MediaListener). */
+    val localMedia = MutableStateFlow<Media?>(null)
+    /** Musikk mottatt fra den andre enheten. */
+    val remoteMedia = MutableStateFlow<Media?>(null)
+    /** Posisjon mottatt fra senderen. */
+    val remoteLoc = MutableStateFlow<Loc?>(null)
+    /** Sving-for-sving fra Google Maps på denne enheten (telefonen). */
+    val localNav = MutableStateFlow<NavInfo?>(null)
+    /** Sving-for-sving mottatt fra telefonen (bilskjermen). */
+    val remoteNav = MutableStateFlow<NavInfo?>(null)
+    /** Google Maps-lenker (sted/rute) delt fra telefonen. */
+    val mapsLinks = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    /** Navigasjonsmål sendt fra telefonen. */
+    val navRequests = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+    /** Lydnivå (bass/diskant, 0–1) fra lyden som spilles på skjermen – brukes av lydbølgene. */
+    @Volatile var audioLow = 0f
+    @Volatile var audioHigh = 0f
+    @Volatile var audioLevelAt = 0L
+
+    @Volatile var sender: ((JSONObject) -> Unit)? = null
+
+    fun send(o: JSONObject): Boolean {
+        val s = sender ?: return false
+        s(o); return true
+    }
+
+    /** play / pause / toggle / next / prev – går til telefonen hvis den spiller, ellers lokalt. */
+    fun mediaCommand(action: String) {
+        if (connected.value && remoteMedia.value != null) {
+            send(JSONObject().put("t", "cmd").put("a", action))
+        } else {
+            MediaListener.control(action)
+        }
+    }
+}

@@ -1,0 +1,10 @@
+<resources>
+    <color name="bg">#0E1116</color>
+    <color name="ic_bg">#101826</color>
+    <style name="Theme.CarLink" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="colorPrimary">#4C8DFF</item>
+    </style>
+</resources>
