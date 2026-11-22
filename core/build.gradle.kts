@@ -14,6 +14,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    implementation("androidx.appcompat:appcompat:1.7.0")
     api("androidx.core:core-ktx:1.13.1")
     api("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

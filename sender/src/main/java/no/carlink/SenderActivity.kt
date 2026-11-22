@@ -49,7 +49,7 @@ class SenderActivity : AppCompatActivity() {
     private lateinit var autoBox: CheckBox
     private lateinit var triggerList: LinearLayout
     private lateinit var bgLocBtn: TextView
-    private val bgLocLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { updateBgLoc() }
+    private val bgLocLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { updateBgLoc(); guide.next() }
 
     private val projLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val d = r.data
@@ -60,7 +60,8 @@ class SenderActivity : AppCompatActivity() {
         if (ok) askProjection() else toast("CarLink trenger tillatelse til lydopptak for å strømme musikken")
     }
 
-    private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { loadDevices() }
+    private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { loadDevices(); guide.next() }
+    private val guide = SetupGuide(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,7 +73,7 @@ class SenderActivity : AppCompatActivity() {
         col.addView(statusTv)
 
         col.section("1 · Tilgang til musikk og navigasjon")
-        notifBtn = pill("Gi tilgang til musikk og navigasjon") { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+        notifBtn = pill("Gi tilgang til musikk og navigasjon") { SetupGuide.openNotificationAccess(this) }
         col.addView(notifBtn, wrap())
         batteryBtn = pill("Tillat at CarLink kjører i bakgrunnen") { askBattery() }
         col.addView(batteryBtn, wrap(8))
@@ -86,7 +87,8 @@ class SenderActivity : AppCompatActivity() {
             isChecked = prefs().getBoolean("auto", false)
             setOnCheckedChangeListener { _, c ->
                 prefs().edit().putBoolean("auto", c).apply()
-                if (c) { if (!batteryOk()) askBattery(); BtTrigger.checkNow(this@SenderActivity) }
+                updateBgLoc()
+                if (c) { BtTrigger.checkNow(this@SenderActivity); guide.next() }
             }
         }
         col.addView(autoBox, wrap())
@@ -194,8 +196,22 @@ class SenderActivity : AppCompatActivity() {
             }
         }
 
-        val miss = Perms.missing(this, Perms.forRole(true))
-        if (miss.isNotEmpty()) permLauncher.launch(miss.toTypedArray())
+        // Tillatelser spørres én om gangen (Androids egne spørsmål, eller forklaring + «Gå til innstillinger» / «Avbryt»)
+        guide.add(SetupGuide.Step("perms", "Tillatelser", null,
+            done = { Perms.missing(this, Perms.forRole(true)).isEmpty() },
+            action = { permLauncher.launch(Perms.missing(this, Perms.forRole(true)).toTypedArray()) }))
+        guide.add(SetupGuide.Step("notif", "Vis musikk og navigasjon i bilen",
+            "CarLink trenger varseltilgang for å se hvilken musikk som spilles og neste sving fra Google Maps.\n\n" +
+                "Slå på «CarLink Sender» på neste side.",
+            done = { MediaListener.isEnabled(this) },
+            action = { SetupGuide.openNotificationAccess(this) }))
+        guide.add(SetupGuide.Step("battery", "Kjør i bakgrunnen", null,
+            done = { batteryOk() }, action = { askBattery() }))
+        guide.add(SetupGuide.Step("bgloc", "Posisjon når CarLink starter selv",
+            "For at kartet i bilen skal få GPS når CarLink starter automatisk, må posisjon være tillatt hele tiden.\n\n" +
+                "Velg «Tillat hele tiden» på neste side.",
+            done = { !autoBox.isChecked || bgLocOk() },
+            action = { askBgLoc() }))
         if (intent?.getBooleanExtra("carlink_audio", false) == true) toggleAudio()
         if (intent?.getBooleanExtra("autoconnect", false) == true) connect()
     }
@@ -233,6 +249,7 @@ class SenderActivity : AppCompatActivity() {
         updateBgLoc()
         loadDevices()
         BtTrigger.checkNow(this)
+        guide.next()
     }
 
     @SuppressLint("MissingPermission")

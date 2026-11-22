@@ -44,7 +44,11 @@ shot 00-for-carlink 2
 if [ "$SIM" = "telefon" ]; then
   adb install -r -g ut/CarLink-Sender-telefon.apk
   adb shell am start -W -n "$S" > /dev/null
-  shot 01-sender 6
+  shot 01-sender-veiviser 6
+  adb shell input keyevent 4
+  shot 01b-sender-batteri-sporsmal 4
+  adb shell input keyevent 4
+  shot 01c-sender 3
   adb shell input swipe 540 1800 540 600 400
   shot 02-sender-rullet 3
   adb shell dumpsys meminfo no.carlink.sender > "$OUT/minne-telefon.txt"
@@ -89,6 +93,11 @@ adb shell input tap $NEXT_X $NEXT_Y      # «neste låt» i musikklinjen → nyt
 
 echo "== Ytelse"
 # --- Ekte tilkobling uten Bluetooth: skjermen finner telefonen over Wi-Fi (samme enhet i testen)
+# Gi tillatelsene på forhånd så veiviserne ikke dekker bildene
+adb shell cmd role add-role-holder android.app.role.HOME no.carlink.launcher 2>/dev/null || true
+adb shell cmd notification allow_listener no.carlink.launcher/no.carlink.MediaListener 2>/dev/null || true
+adb shell cmd notification allow_listener no.carlink.sender/no.carlink.MediaListener 2>/dev/null || true
+adb shell dumpsys deviceidle whitelist +no.carlink.sender > /dev/null 2>&1 || true
 adb shell am force-stop no.carlink.launcher
 adb shell am start -W -n "$L" > /dev/null
 sleep 3

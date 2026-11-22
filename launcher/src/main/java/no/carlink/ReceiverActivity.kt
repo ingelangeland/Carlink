@@ -46,6 +46,19 @@ class ReceiverActivity : AppCompatActivity() {
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         LinkService.startReceiver(this)
+        guide.next()
+    }
+    private val guide = SetupGuide(this)
+    private val homeRole = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { guide.next() }
+
+    private fun isDefaultHome(): Boolean = runCatching {
+        getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_HOME)
+    }.getOrDefault(true)
+
+    override fun onResume() {
+        super.onResume()
+        // Neste manglende tillatelse (etter at Androids egne spørsmål er besvart)
+        if (Perms.missing(this, Perms.forRole(false)).isEmpty()) guide.next()
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -121,6 +134,19 @@ class ReceiverActivity : AppCompatActivity() {
             val miss = Perms.missing(this, Perms.forRole(false))
             if (miss.isEmpty()) LinkService.startReceiver(this) else permLauncher.launch(miss.toTypedArray())
         } else DemoFeeder.start(this)
+        if (!demo) {
+            guide.add(SetupGuide.Step("home", "CarLink som hjemmeskjerm", null,
+                done = { isDefaultHome() },
+                action = {
+                    val rm = getSystemService(android.app.role.RoleManager::class.java)
+                    homeRole.launch(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME))
+                }))
+            guide.add(SetupGuide.Step("notif", "Vis musikk som spilles på skjermen",
+                "For å vise cover og styre musikk som spilles på skjermen selv (f.eks. Tidal i bilen), trenger CarLink varseltilgang.\n\n" +
+                    "Slå på «CarLink» på neste side.",
+                done = { MediaListener.isEnabled(this) },
+                action = { SetupGuide.openNotificationAccess(this) }))
+        }
         handleIntent(intent)
     }
 
@@ -313,7 +339,7 @@ class ReceiverActivity : AppCompatActivity() {
                     2 -> toggleMockGps()
                     3 -> LinkService.startReceiver(this, force = true)
                     4 -> Launch.start(this, Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-                    5 -> Launch.start(this, Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                    5 -> SetupGuide.openNotificationAccess(this)
                     6 -> Launch.start(this, Intent(Settings.ACTION_HOME_SETTINGS))
                     7 -> if (DemoFeeder.active) {
                         DemoFeeder.stop(); prefs().edit().putBoolean("demo", false).apply()
