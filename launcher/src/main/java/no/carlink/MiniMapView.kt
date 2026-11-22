@@ -68,7 +68,6 @@ class MiniMapView(ctx: Context) : View(ctx) {
             try {
                 val bmp = RoadCache.render(a, pxPerM, density)
                 val t = name?.let { RoadCache.targetPath(a, pxPerM, it) }
-                android.util.Log.i("CarLinkRoads", "minikart tegnet: ${a.roads.size} veier, ${bmp.width}px, målvei=${t != null}")
                 post { if (area === a) { roads = bmp; target = t; invalidate() } }
             } catch (e: Exception) { android.util.Log.w("CarLinkRoads", "tegning feilet", e) }
         }
@@ -95,15 +94,8 @@ class MiniMapView(ctx: Context) : View(ctx) {
 
     override fun onDetachedFromWindow() { anim.cancel(); super.onDetachedFromWindow() }
 
-    private var dbg = 0
     override fun onDraw(canvas: Canvas) {
         val a = area; val bmp = roads
-        if (dbg < 3 && hasPos && a != null && bmp != null) {
-            dbg++
-            RoadCache.project(a, pxPerM, bmp.width / 2f, lat, lon, xy)
-            val px = xy[0].toInt().coerceIn(0, bmp.width - 1); val py = xy[1].toInt().coerceIn(0, bmp.height - 1)
-            android.util.Log.i("CarLinkRoads", "tegner: bil=$lat,$lon brg=$brg xy=${xy[0]},${xy[1]} bilde=${bmp.width} alfa=${android.graphics.Color.alpha(bmp.getPixel(px, py))} mål=${target != null} hw=${canvas.isHardwareAccelerated} ${width}x$height")
-        }
         val cx = width / 2f; val cy = height * 0.62f
         if (a != null && bmp != null && hasPos) {
             RoadCache.project(a, pxPerM, bmp.width / 2f, lat, lon, xy)
