@@ -62,7 +62,7 @@ object RoadCache {
         val q = "[out:json][timeout:12];way(around:$RADIUS_M,$lat,$lon)[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|" +
             "unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"];out tags geom qt;"
         val c = URL(server).openConnection() as HttpURLConnection
-        c.connectTimeout = 8_000; c.readTimeout = 25_000
+        c.connectTimeout = 8_000; c.readTimeout = 45_000
         c.requestMethod = "POST"; c.doOutput = true
         c.setRequestProperty("User-Agent", "CarLink/1.0 (Android-bilskjerm)")
         c.outputStream.use { it.write(("data=" + URLEncoder.encode(q, "UTF-8")).toByteArray()) }
@@ -94,6 +94,29 @@ object RoadCache {
             roads += Road(pts, roadClass(tags?.optString("highway") ?: ""), tags?.optString("name") ?: "")
         }
         return Area(lat, lon, roads)
+    }
+
+    /** Demomodus: enkle veier langs demoruta (byttes ut med ekte veier så snart de er hentet). */
+    fun demoArea(route: List<Pair<Double, Double>>) {
+        if (area.value != null || route.size < 2) return
+        val (la0, lo0) = route[0]
+        val roads = ArrayList<Road>()
+        roads += Road(DoubleArray(route.size * 2) { i -> if (i % 2 == 0) route[i / 2].first else route[i / 2].second }, 1, "Ringveien")
+        val k = cos(Math.toRadians(la0))
+        for (i in 0 until route.size - 1) {
+            val (aLat, aLon) = route[i]; val (bLat, bLon) = route[i + 1]
+            val dy = (bLat - aLat) * 110_540.0; val dx = (bLon - aLon) * 111_320.0 * k
+            val len = hypot(dx, dy).coerceAtLeast(1.0)
+            var d = 60.0
+            while (d < len) {   // sidegater på tvers hver ca. 130 m
+                val f = d / len
+                val cLat = aLat + (bLat - aLat) * f; val cLon = aLon + (bLon - aLon) * f
+                val px = -dy / len * 160; val py = dx / len * 160
+                roads += Road(doubleArrayOf(cLat - py / 110_540.0, cLon - px / (111_320.0 * k), cLat + py / 110_540.0, cLon + px / (111_320.0 * k)), 3, "")
+                d += 130.0
+            }
+        }
+        area.value = Area(la0, lo0, roads)
     }
 
     private fun roadClass(h: String) = when (h) {
