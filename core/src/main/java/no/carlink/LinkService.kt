@@ -53,6 +53,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -548,7 +549,24 @@ class LinkService : Service() {
     /** Prøver telefonen direkte på Wi-Fi: hotspot-«ruteren» og siste kjente adresse. Billig: ett forsøk hvert 3. s. */
     private suspend fun wifiProbeLoop(incoming: Channel<Pair<Socket, Network?>>) {
         val cm = getSystemService(ConnectivityManager::class.java)
+        // Skjermen av (bilen slått av / hvilemodus): ikke let etter telefonen før skjermen er på igjen
+        val screenOn = kotlinx.coroutines.flow.MutableStateFlow(getSystemService(PowerManager::class.java).isInteractive)
+        val screenRx = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) { screenOn.value = i.action == Intent.ACTION_SCREEN_ON }
+        }
+        registerReceiver(screenRx, android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)
+        })
+        try { probeWhileOn(cm, screenOn, incoming) } finally { runCatching { unregisterReceiver(screenRx) } }
+    }
+
+    private suspend fun probeWhileOn(
+        cm: ConnectivityManager,
+        screenOn: kotlinx.coroutines.flow.StateFlow<Boolean>,
+        incoming: Channel<Pair<Socket, Network?>>,
+    ) {
         while (coroutineContext.isActive) {
+            if (!screenOn.value) { screenOn.first { it } }   // venter uten å bruke strøm
             if (!rxBusy.get()) {
                 val candidates = LinkedHashMap<String, Network?>()
                 try {
