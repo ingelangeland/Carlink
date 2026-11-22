@@ -506,7 +506,8 @@ class LinkService : Service() {
                 } else {
                     val withArt = m.artId != lastArt
                     lastArt = m.artId
-                    Hub.send(Protocol.media(m, withArt))
+                    // JPEG-koding av coveret skjer utenfor hovedtråden
+                    Hub.send(withContext(Dispatchers.Default) { Protocol.media(m, withArt) })
                 }
             }
         }
@@ -723,15 +724,17 @@ class LinkService : Service() {
                 val target = (targetMs / 20).coerceAtLeast(5)        // antall biter før avspilling starter
                 val maxChunks = target * 3                           // tak, så forsinkelsen ikke vokser
                 val queue = LinkedBlockingDeque<ByteArray>()
+                // Gjenbruk av buffere: unngår 50 nye minneblokker i sekundet
+                val pool = java.util.concurrent.ArrayBlockingQueue<ByteArray>(maxChunks + 16)
 
                 // Tråd 1: les fra Wi-Fi inn i bufferen.
                 val reader = launch {
                     try {
                         while (isActive) {
-                            val c = ByteArray(chunkBytes)
+                            val c = pool.poll() ?: ByteArray(chunkBytes)
                             input.readFully(c)
                             queue.offer(c)
-                            while (queue.size > maxChunks) queue.pollFirst()
+                            while (queue.size > maxChunks) queue.pollFirst()?.let { pool.offer(it) }
                         }
                     } catch (_: IOException) {} // brudd -> avspillingsløkka avslutter når bufferen er tom
                 }
@@ -762,6 +765,7 @@ class LinkService : Service() {
                     Hub.audioLow = (sqrt(sl / cnt) * 3.2).toFloat().coerceAtMost(1f)
                     Hub.audioHigh = (sqrt(sh / cnt) * 4.5).toFloat().coerceAtMost(1f)
                     Hub.audioLevelAt = SystemClock.elapsedRealtime()
+                    pool.offer(c)
                 }
                 reader.cancel()
             } catch (e: CancellationException) {

@@ -69,7 +69,11 @@ object Hub {
     }
 
     /** play / pause / toggle / next / prev – går til telefonen hvis den spiller, ellers lokalt. */
+    /** Settes av demomodus, så knappene virker uten telefon. */
+    @Volatile var demoHandler: ((String) -> Unit)? = null
+
     fun mediaCommand(action: String) {
+        demoHandler?.let { it(action); return }
         if (connected.value && remoteMedia.value != null) {
             send(JSONObject().put("t", "cmd").put("a", action))
         } else {

@@ -24,7 +24,13 @@ android {
     }
     buildTypes {
         getByName("debug") { signingConfig = signingConfigs.getByName("carlink") }
-        release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("carlink") }
+        // Optimalisert versjon: R8 fjerner ubrukt kode og ressurser → mindre og raskere app
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("carlink")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

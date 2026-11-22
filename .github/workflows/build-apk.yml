@@ -1,5 +1,5 @@
-# Bygger begge appene (CarLink til bilskjermen og CarLink Sender til telefonen) automatisk.
-# Resultatet legges ut som en «Release» med navnet «Siste versjon», der APK-filene kan lastes ned direkte.
+# Bygger begge appene (optimalisert «release»), legger dem ut som «Siste versjon»,
+# og kjører deretter en simulering i Android-emulator med skjermbilder og ytelsesmåling.
 name: Bygg APK
 
 on:
@@ -15,16 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Prosjektet kan lastes opp som én fil (CarLink.zip). Den pakkes ut her.
-      - name: Pakk ut CarLink.zip
+      - name: Pakk ut CarLink.zip (hvis lastet opp som zip)
         run: |
           ZIP=$(ls -t CarLink*.zip 2>/dev/null | head -1)
           if [ -n "$ZIP" ]; then
-            echo "Pakker ut $ZIP"
             unzip -q -o "$ZIP" -d /tmp/prosjekt
             cp -r /tmp/prosjekt/CarLink/. .
           fi
-          ls -la
 
       - uses: actions/setup-java@v4
         with:
@@ -38,14 +35,15 @@ jobs:
       - name: Godta Android-lisenser
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
-      - name: Bygg appene
-        run: gradle :launcher:assembleDebug :sender:assembleDebug --stacktrace
+      - name: Bygg appene (optimalisert)
+        run: gradle :launcher:assembleRelease :sender:assembleRelease --stacktrace
 
       - name: Gi filene tydelige navn
         run: |
           mkdir -p ut
-          cp launcher/build/outputs/apk/debug/launcher-debug.apk ut/CarLink-bilskjerm.apk
-          cp sender/build/outputs/apk/debug/sender-debug.apk ut/CarLink-Sender-telefon.apk
+          cp launcher/build/outputs/apk/release/launcher-release.apk ut/CarLink-bilskjerm.apk
+          cp sender/build/outputs/apk/release/sender-release.apk ut/CarLink-Sender-telefon.apk
+          ls -l ut
 
       - uses: actions/upload-artifact@v4
         with:
@@ -61,5 +59,50 @@ jobs:
           make_latest: true
           files: ut/*.apk
           body: |
-            **CarLink-bilskjerm.apk** – installeres på skjermen i bilen.
-            **CarLink-Sender-telefon.apk** – installeres på telefonen.
+            CarLink-bilskjerm.apk – installeres på skjermen i bilen.
+            CarLink-Sender-telefon.apk – installeres på telefonen.
+
+  simulate:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: CarLink-APK
+          path: ut
+
+      - name: Slå på maskinvareakselerasjon for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Kjør simulering
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash tools/simulate.sh
+
+      - name: Legg ut simuleringsresultat
+        if: always()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: simulering
+          name: Simulering (skjermbilder og rapport)
+          prerelease: true
+          make_latest: false
+          files: |
+            sim/*.png
+            sim/RAPPORT.txt
+            sim/KRASJ.txt
+
+      - name: Feil hvis appen krasjet
+        run: test ! -f sim/KRASJ.txt

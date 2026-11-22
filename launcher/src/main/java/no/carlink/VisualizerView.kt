@@ -50,9 +50,13 @@ class VisualizerView(ctx: Context) : View(ctx) {
 
     private val frame = object : Runnable {
         override fun run() {
+            if (!isAttachedToWindow) return
+            // Ikke synlig (f.eks. delt visning eller skjerm av): ingen tegning, sjekk sjelden
+            if (!isShown) { postDelayed(this, 500); return }
             val active = step()
             invalidate()
-            if (isAttachedToWindow) { if (active) postOnAnimation(this) else postDelayed(this, 250) }
+            // 30 bilder/s er nok for en jevn bølge og halverer arbeidet mot 60
+            postDelayed(this, if (active) 33L else 250L)
         }
     }
 
@@ -64,7 +68,7 @@ class VisualizerView(ctx: Context) : View(ctx) {
         }
     }
 
-    override fun onAttachedToWindow() { super.onAttachedToWindow(); postOnAnimation(frame) }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); post(frame) }
     override fun onDetachedFromWindow() { removeCallbacks(frame); super.onDetachedFromWindow() }
     override fun onSizeChanged(w: Int, hh: Int, ow: Int, oh: Int) { super.onSizeChanged(w, hh, ow, oh); shadersDirty = true }
 
@@ -81,12 +85,12 @@ class VisualizerView(ctx: Context) : View(ctx) {
                 playing -> (0.30f + 0.20f * sin(t * 1.6f + i * 0.35f)) * (0.65f + wobble * 0.55f)
                 else -> 0.04f
             }.coerceIn(0.03f, 1f)
-            val k = if (target > h[i]) 0.45f else 0.12f
+            val k = if (target > h[i]) 0.65f else 0.22f
             val nv = h[i] + (target - h[i]) * k
             if (abs(nv - h[i]) > 0.002f) moving = true
             h[i] = nv
         }
-        t += 0.016f
+        t += 0.033f
         return moving || live || playing
     }
 

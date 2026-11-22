@@ -100,8 +100,12 @@ class ReceiverActivity : AppCompatActivity() {
             }
         }
 
-        val miss = Perms.missing(this, Perms.forRole(false))
-        if (miss.isEmpty()) LinkService.startReceiver(this) else permLauncher.launch(miss.toTypedArray())
+        val demo = intent?.getBooleanExtra("demo", false) == true || prefs().getBoolean("demo", false)
+        if (!demo) {
+            val miss = Perms.missing(this, Perms.forRole(false))
+            if (miss.isEmpty()) LinkService.startReceiver(this) else permLauncher.launch(miss.toTypedArray())
+        } else DemoFeeder.start(this)
+        handleIntent(intent)
     }
 
     // ------------------------------------------------------------- meny-skinne
@@ -206,14 +210,19 @@ class ReceiverActivity : AppCompatActivity() {
         statusText.setTextColor(t.accent)
     }
 
+    private var lastWeights: FloatArray? = null
+
     private fun showHome() {
         home.visibility = View.VISIBLE
+        // Panelene (kart m.m.) fjernes helt mens hjemmeskjermen vises → ingen kart/GPS i bakgrunnen
+        if (split.childCount > 0) { lastWeights = split.weights.copyOf(); split.removeAllViews() }
         split.visibility = View.GONE
         rail.visibility = View.GONE
         prefs().edit().putString("mode", "home").apply()
     }
 
     private fun showSplit() {
+        if (split.childCount == 0) rebuild(lastWeights?.takeIf { it.size == panes.size })
         home.visibility = View.GONE
         split.visibility = View.VISIBLE
         rail.visibility = View.VISIBLE
@@ -224,6 +233,24 @@ class ReceiverActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.hasCategory(Intent.CATEGORY_HOME)) showHome()
+        handleIntent(intent)
+    }
+
+    /**
+     * Styring utenfra (brukes av simuleringen): --ez demo true, --es show home|nav|split|map|music|apps
+     */
+    private fun handleIntent(i: Intent?) {
+        if (i == null) return
+        if (i.getBooleanExtra("demo", false)) DemoFeeder.start(this)
+        val show = i.getStringExtra("show") ?: return
+        DemoFeeder.showNav = show == "nav"
+        when (show) {
+            "home", "nav" -> showHome()
+            "split" -> setLayout(listOf(PaneType.MAP, PaneType.MUSIC, PaneType.APPS))
+            "map" -> setLayout(listOf(PaneType.MAP))
+            "music" -> setLayout(listOf(PaneType.MUSIC))
+            "apps" -> setLayout(listOf(PaneType.APPS))
+        }
     }
 
     private fun setCount(n: Int) {
@@ -243,6 +270,7 @@ class ReceiverActivity : AppCompatActivity() {
             "Bluetooth-innstillinger",
             "Varseltilgang (vis musikk som spilles på skjermen selv)",
             "Velg CarLink som standard hjemmeskjerm",
+            "Demomodus (simulert telefon): " + if (DemoFeeder.active) "PÅ" else "AV",
         )
         AlertDialog.Builder(this)
             .setTitle(Hub.status.value)
@@ -256,6 +284,13 @@ class ReceiverActivity : AppCompatActivity() {
                     4 -> Launch.start(this, Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
                     5 -> Launch.start(this, Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                     6 -> Launch.start(this, Intent(Settings.ACTION_HOME_SETTINGS))
+                    7 -> if (DemoFeeder.active) {
+                        DemoFeeder.stop(); prefs().edit().putBoolean("demo", false).apply()
+                        LinkService.startReceiver(this, force = true)
+                    } else {
+                        LinkService.stop(this); prefs().edit().putBoolean("demo", true).apply()
+                        DemoFeeder.start(this)
+                    }
                 }
             }
             .setNegativeButton("Lukk", null)

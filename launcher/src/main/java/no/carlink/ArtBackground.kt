@@ -54,6 +54,8 @@ class ArtBackground(ctx: Context) : ScopedFrame(ctx) {
             if (Build.VERSION.SDK_INT >= 31) {
                 iv.setRenderEffect(RenderEffect.createBlurEffect(36f.px(), 36f.px(), Shader.TileMode.CLAMP))
             }
+            // Statisk forstørrelse (ingen animasjon) så uskarpe kanter ikke synes
+            iv.scaleX = 1.15f; iv.scaleY = 1.15f
             addView(iv, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         }
         // Mørkner det uskarpe laget litt, så det skarpe coveret skiller seg ut
@@ -71,7 +73,7 @@ class ArtBackground(ctx: Context) : ScopedFrame(ctx) {
     override fun onStart(scope: CoroutineScope) {
         scope.launch { Ambient.media.collect { (m, _) -> setArt(m?.art, m?.artId ?: 0) } }
         scope.launch { Ambient.theme.collect { applyScrim(it) } }
-        for (iv in listOf(a, b, sa, sb)) {
+        for (iv in listOf(sa, sb)) {
             drifts += ObjectAnimator.ofPropertyValuesHolder(
                 iv,
                 PropertyValuesHolder.ofFloat(View.SCALE_X, if (iv is FadeEdgeImageView) 1f else 1.12f, if (iv is FadeEdgeImageView) 1.04f else 1.25f),
