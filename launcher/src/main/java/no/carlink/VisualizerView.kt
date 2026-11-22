@@ -49,7 +49,7 @@ class VisualizerView(ctx: Context) : View(ctx) {
         override fun run() {
             if (!isAttachedToWindow) return
             // Ikke synlig (f.eks. delt visning eller skjerm av): ingen tegning, sjekk sjelden
-            if (!isShown) { postDelayed(this, 500); return }
+            if (!isShown || Ambient.overlayOpen) { postDelayed(this, 500); return }
             val active = step()
             invalidate()
             // 30 bilder/s er nok for en jevn bølge og halverer arbeidet mot 60

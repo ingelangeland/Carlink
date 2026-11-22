@@ -62,6 +62,32 @@ jobs:
             CarLink-bilskjerm.apk – installeres på skjermen i bilen.
             CarLink-Sender-telefon.apk – installeres på telefonen.
 
+  # Kodekontroll (Android Lint) parallelt, så det ikke forsinker bygg og simulering
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Godta Android-lisenser
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Kjør Lint
+        run: |
+          gradle :launcher:lintRelease :sender:lintRelease --continue || true
+          mkdir -p lint
+          cp launcher/build/lint.txt lint/LINT-bilskjerm.txt 2>/dev/null || echo "ingen rapport" > lint/LINT-bilskjerm.txt
+          cp sender/build/lint.txt lint/LINT-telefon.txt 2>/dev/null || echo "ingen rapport" > lint/LINT-telefon.txt
+          tail -3 lint/*.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: simulering
+          files: lint/*.txt
+
   simulate:
     needs: build
     runs-on: ubuntu-latest

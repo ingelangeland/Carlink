@@ -8,5 +8,6 @@ class CarLinkApp : Application() {
         super.onCreate()
         Configuration.getInstance().load(this, prefs())
         Configuration.getInstance().userAgentValue = packageName
+        AppCatalog.start(this)
     }
 }

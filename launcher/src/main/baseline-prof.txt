@@ -1,0 +1,6 @@
+# Kode som forhåndskompileres ved installasjon (gir jevnere animasjoner fra første start)
+HSPLno/carlink/**;->**(**)**
+Lno/carlink/**;
+HSPLorg/osmdroid/views/**;->**(**)**
+HSPLorg/osmdroid/tileprovider/**;->**(**)**
+HSPLandroidx/palette/**;->**(**)**

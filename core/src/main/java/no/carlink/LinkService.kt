@@ -528,11 +528,11 @@ class LinkService : Service() {
                 var sock: Socket? = null
                 for (attempt in 0 until 3) {
                     for (i in 0 until ips.length()) {
+                        val s = network?.socketFactory?.createSocket() ?: Socket()
                         try {
-                            val s = network?.socketFactory?.createSocket() ?: Socket()
                             s.connect(InetSocketAddress(ips.getString(i), port), 2500)
                             sock = s; break
-                        } catch (_: IOException) {}
+                        } catch (_: IOException) { runCatching { s.close() } }
                     }
                     if (sock != null) break
                     delay(1500)
@@ -563,9 +563,9 @@ class LinkService : Service() {
         val screenRx = object : android.content.BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) { screenOn.value = i.action == Intent.ACTION_SCREEN_ON }
         }
-        registerReceiver(screenRx, android.content.IntentFilter().apply {
+        ContextCompat.registerReceiver(this, screenRx, android.content.IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)
-        })
+        }, ContextCompat.RECEIVER_NOT_EXPORTED)
         try { probeWhileOn(cm, screenOn, incoming) } finally { runCatching { unregisterReceiver(screenRx) } }
     }
 
@@ -595,12 +595,14 @@ class LinkService : Service() {
                     runCatching { packageManager.getPackageInfo("no.carlink.sender", 0) }.isSuccess) candidates["127.0.0.1"] = null
                 for ((ip, net) in candidates) {
                     if (rxBusy.get()) break
+                    var s: Socket? = null
                     try {
-                        val s = net?.socketFactory?.createSocket() ?: Socket()
-                        withContext(Dispatchers.IO) { s.connect(InetSocketAddress(ip, Protocol.PORT), 1200) }
-                        if (rxBusy.compareAndSet(false, true)) { incoming.send(s to null); break }
-                        else runCatching { s.close() }
-                    } catch (_: IOException) {}
+                        s = net?.socketFactory?.createSocket() ?: Socket()
+                        val sock = s
+                        withContext(Dispatchers.IO) { sock.connect(InetSocketAddress(ip, Protocol.PORT), 1200) }
+                        if (rxBusy.compareAndSet(false, true)) { incoming.send(sock to null); s = null; break }
+                    } catch (e: CancellationException) { throw e } catch (_: Exception) {
+                    } finally { s?.let { runCatching { it.close() } } }   // lukk mislykkede forsøk (ingen lekkasje)
                 }
             }
             delay(3000)
@@ -670,7 +672,8 @@ class LinkService : Service() {
             while (isActive) {
                 val line = r.readLine() ?: break
                 val o = runCatching { JSONObject(line) }.getOrNull() ?: continue
-                handle(o, isSender)
+                // En feil i én melding skal aldri bryte forbindelsen
+                runCatching { handle(o, isSender) }
             }
         } catch (_: IOException) {
         } finally {
@@ -851,19 +854,22 @@ class LinkService : Service() {
             // ikke stopper opptaket (som ellers ville gitt hull i lyden).
             val queue = LinkedBlockingDeque<ByteArray>()
             val maxQueued = 150 // 3 s à 20 ms
+            // Gjenbruk lydbuffere (unngår 50 nye minneblokker i sekundet og rykk fra søppeltømming)
+            val pool = java.util.concurrent.ConcurrentLinkedQueue<ByteArray>()
             coroutineScope {
                 val writer = launch {
                     try {
                         while (isActive) {
                             val c = queue.poll(200, TimeUnit.MILLISECONDS) ?: continue
                             out.write(c)
+                            pool.offer(c)
                         }
                     } catch (_: IOException) {} // brudd -> løkka under avslutter
                 }
                 try {
                     val chunk = rate * 4 / 50 // 20 ms
                     while (isActive) {
-                        val buf = ByteArray(chunk)
+                        val buf = pool.poll() ?: ByteArray(chunk)
                         var got = 0
                         while (got < chunk) {
                             val n = rec.read(buf, got, chunk - got)
@@ -871,7 +877,7 @@ class LinkService : Service() {
                             got += n
                         }
                         queue.offer(buf)
-                        while (queue.size > maxQueued) queue.pollFirst()
+                        while (queue.size > maxQueued) queue.pollFirst()?.let { pool.offer(it) }
                         if (!writer.isActive) throw IOException("forbindelsen til skjermen brøt")
                     }
                 } finally { writer.cancel() }

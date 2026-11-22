@@ -28,9 +28,8 @@ import kotlinx.coroutines.withContext
 @SuppressLint("ViewConstructor")
 class AppsPanel(ctx: Context) : ScopedFrame(ctx) {
 
-    data class App(val label: String, val component: ComponentName, val icon: Drawable)
 
-    private var apps: List<App> = emptyList()
+    private var apps: List<AppCatalog.App> = emptyList()
 
     private val adapter = object : BaseAdapter() {
         override fun getCount() = apps.size
@@ -71,23 +70,15 @@ class AppsPanel(ctx: Context) : ScopedFrame(ctx) {
     }
 
     override fun onStart(scope: CoroutineScope) {
-        if (apps.isNotEmpty()) return
         scope.launch {
-            apps = withContext(Dispatchers.IO) { load() }
-            adapter.notifyDataSetChanged()
+            AppCatalog.apps.collect { list ->
+                apps = list.sortedWith(compareBy<AppCatalog.App>({ it.component.packageName != Launch.MAPS }, { it.label.lowercase() }))
+                adapter.notifyDataSetChanged()
+            }
         }
     }
 
-    private fun load(): List<App> {
-        val pm = context.packageManager
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return pm.queryIntentActivities(intent, 0)
-            .filter { it.activityInfo.packageName != context.packageName }
-            .map { App(it.loadLabel(pm).toString(), ComponentName(it.activityInfo.packageName, it.activityInfo.name), it.loadIcon(pm)) }
-            .sortedWith(compareBy<App>({ it.component.packageName != Launch.MAPS }, { it.label.lowercase() }))
-    }
-
-    private fun menu(anchor: View, app: App) {
+    private fun menu(anchor: View, app: AppCatalog.App) {
         PopupMenu(context, anchor).apply {
             menu.add(0, 1, 0, "Åpne ved siden av (delt skjerm)")
             menu.add(0, 2, 1, "Åpne som flytende vindu")

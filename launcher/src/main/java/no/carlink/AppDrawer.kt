@@ -39,7 +39,6 @@ import kotlin.math.min
 @SuppressLint("ViewConstructor")
 class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
 
-    data class App(val label: String, val component: ComponentName, val icon: Drawable)
 
     var isOpen = false
         private set
@@ -52,14 +51,14 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
     private val scroll = android.widget.ScrollView(ctx)
     private val rowsBox = LinearLayout(ctx)
     private var lastCols = -1
-    private var apps: List<App> = emptyList()
+    private var apps: List<AppCatalog.App> = emptyList()
     private var anim: ValueAnimator? = null
     private var progress = 0f
     private val colW = 112.dp
     private val rowH = 118.dp
 
     init {
-        visibility = GONE
+        visibility = INVISIBLE
         isClickable = true                      // fanger trykk så de ikke går til skjermen bak
         setOnClickListener { close() }          // trykk utenfor appene lukker
         smoke.background = smokeBg
@@ -90,6 +89,8 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
 
     override fun onStart(scope: CoroutineScope) {
         scope.launch { Ambient.theme.collect { applyTheme(it) } }
+        // Rutenettet bygges på forhånd (skjult), så det er klart når oversikten åpnes
+        scope.launch { AppCatalog.apps.collect { apps = it; lastCols = -1; layoutGrid() } }
 
     }
 
@@ -100,14 +101,16 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
         isOpen = true
         visibility = VISIBLE
         buildModeRow()
-        if (apps.isEmpty()) loadApps() else layoutGrid()
+        layoutGrid()
+        Ambient.overlayOpen = true
         animateTo(1f, 240)
     }
 
     fun close(immediate: Boolean = false) {
         if (!isOpen) return
         isOpen = false
-        if (immediate) { anim?.cancel(); setProgress(0f); visibility = GONE; return }
+        Ambient.overlayOpen = false
+        if (immediate) { anim?.cancel(); setProgress(0f); visibility = INVISIBLE; return }
         animateTo(0f, 200)
     }
 
@@ -118,7 +121,7 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
             interpolator = DecelerateInterpolator(1.6f)
             addUpdateListener { setProgress(it.animatedValue as Float) }
             addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: android.animation.Animator) { if (!isOpen && progress <= 0.001f) visibility = GONE }
+                override fun onAnimationEnd(a: android.animation.Animator) { if (!isOpen && progress <= 0.001f) visibility = INVISIBLE }
             })
             start()
         }
@@ -184,7 +187,7 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
      * En rute i rutenettet. Bare selve ikonet + navnet kan trykkes; det tomme rommet rundt
      * (mellom appene) gjør ingenting, så man ikke åpner en app ved et uhell.
      */
-    private fun appTile(a: App): View = FrameLayout(context).apply {
+    private fun appTile(a: AppCatalog.App): View = FrameLayout(context).apply {
         val hit = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -237,26 +240,12 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
 
     // ------------------------------------------------------------------ apper
 
-    private fun loadApps() {
-        val pm = context.packageManager
-        kotlinx.coroutines.MainScope().launch {
-            apps = withContext(Dispatchers.IO) {
-                pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
-                    .filter { it.activityInfo.packageName != context.packageName }
-                    .map { App(it.loadLabel(pm).toString(), ComponentName(it.activityInfo.packageName, it.activityInfo.name), it.loadIcon(pm)) }
-                    .sortedBy { it.label.lowercase() }
-            }
-            lastCols = -1
-            layoutGrid()
-        }
-    }
-
-    private fun openApp(a: App, mode: Launch.Mode) {
+    private fun openApp(a: AppCatalog.App, mode: Launch.Mode) {
         Launch.app(context, a.component, mode)
         close(immediate = mode == Launch.Mode.FULL)
     }
 
-    private fun appMenu(anchor: View, a: App) {
+    private fun appMenu(anchor: View, a: AppCatalog.App) {
         PopupMenu(context, anchor).apply {
             Launch.Mode.entries.forEachIndexed { i, m -> menu.add(0, i, i, "Åpne: ${m.label}") }
             val fav = Favorites.contains(context, a.component)

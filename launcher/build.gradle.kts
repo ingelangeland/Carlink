@@ -9,8 +9,10 @@ android {
         applicationId = "no.carlink.launcher"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Nytt versjonsnummer for hvert bygg (vises under App-info → versjon)
+        val run = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionCode = run
+        versionName = "1.0.$run"
     }
     // Fast signeringsnøkkel, så nye versjoner kan installeres oppå de gamle.
     // (Privat bruk. Del ikke nøkkelen hvis appen en gang skal legges ut offentlig.)
@@ -37,9 +39,18 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    // Kodekontroll (Android Lint): rapport i stedet for å stoppe bygget
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+        textReport = true
+        textOutput = file("build/lint.txt")
+    }
 }
 dependencies {
     implementation(project(":core"))
+    // Forhåndskompilerer appens kode ved installasjon (baseline-prof.txt) → raskere oppstart og jevnere menyer
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.activity:activity-ktx:1.9.3")

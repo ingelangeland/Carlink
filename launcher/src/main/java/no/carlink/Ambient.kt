@@ -21,6 +21,9 @@ object Ambient {
      */
     val topRightNeed = MutableStateFlow(0f)
 
+    /** App-oversikten dekker skjermen: animasjoner bak (lydbølgen) kan hvile. */
+    @Volatile var overlayOpen = false
+
     /** Musikk fra telefonen hvis den spiller, ellers musikk som spilles på skjermen selv (f.eks. Tidal i bilen). */
     val media: Flow<Pair<Hub.Media?, String>> =
         combine(Hub.connected, Hub.remoteMedia, Hub.localMedia, Hub.audioStreaming) { c, r, l, a ->

@@ -92,6 +92,23 @@ adb shell input tap $NEXT_X $NEXT_Y      # «neste låt» i musikklinjen → nyt
           shot 09-hjem-neste-lat 6
 
 echo "== Ytelse"
+# --- Flyt i menyene: åpne/lukke app-oversikten med knappen og dra i delt skjerm (målt)
+GRID_X=$(dp 54); GRID_Y=$(dp 44)
+go home; sleep 4
+adb shell dumpsys gfxinfo no.carlink.launcher reset > /dev/null
+for i in 1 2 3 4; do
+  adb shell input tap $GRID_X $GRID_Y; sleep 1.5
+  adb shell input tap $OUT_X $OUT_Y;   sleep 1.5
+done
+adb shell dumpsys gfxinfo no.carlink.launcher > "$OUT/grafikk-oversikt.txt"
+go split; sleep 6
+adb shell dumpsys gfxinfo no.carlink.launcher reset > /dev/null
+for i in 1 2 3; do
+  adb shell input swipe $DIV_X $DIV_Y $((DIV_X-250)) $DIV_Y 700; sleep 0.8
+  adb shell input swipe $((DIV_X-250)) $DIV_Y $DIV_X $DIV_Y 700; sleep 0.8
+done
+adb shell dumpsys gfxinfo no.carlink.launcher > "$OUT/grafikk-dra.txt"
+
 # --- Ekte tilkobling uten Bluetooth: skjermen finner telefonen over Wi-Fi (samme enhet i testen)
 # Gi tillatelsene på forhånd så veiviserne ikke dekker bildene
 adb shell cmd role add-role-holder android.app.role.HOME no.carlink.launcher 2>/dev/null || true
@@ -126,6 +143,10 @@ adb logcat -d > "$OUT/logcat.txt"
   echo; echo "ANR (appen svarer ikke):"; grep -E "ANR in no.carlink" "$OUT/logcat.txt" || echo "  ingen"
   echo; echo "Bildeflyt på hjemmeskjermen i 15 s:"
   grep -E "Total frames rendered|Janky frames|50th percentile|90th percentile|99th percentile" "$OUT/grafikk.txt" | head -6
+  echo; echo "Flyt: åpne/lukke app-oversikten 4 ganger:"
+  grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile" "$OUT/grafikk-oversikt.txt" | head -4
+  echo; echo "Flyt: dra skillelinjen i delt skjerm 6 ganger:"
+  grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile" "$OUT/grafikk-dra.txt" | head -4
   echo; echo "CPU (hjemmeskjerm med demo, programvaregrafikk i emulator):"; cat "$OUT/cpu.txt"
   echo; echo "Minne (TOTAL PSS i kB):"
   echo -n "  bilskjerm: "; grep -m1 "TOTAL PSS" "$OUT/minne-bilskjerm.txt" || true
