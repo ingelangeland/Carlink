@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.PorterDuff
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.SystemClock
@@ -101,13 +100,13 @@ class VisualizerView(ctx: Context) : View(ctx) {
         colorB = ColorUtils.blendARGB(accent, 0xFFFF4FD8.toInt(), 0.5f)
         colorC = ColorUtils.blendARGB(accent, 0xFF6FE7FF.toInt(), 0.6f)
         val w = width.toFloat()
-        // Fargeovergang og uttoning mot kantene bakes inn i samme shader → ingen ekstra tegnelag
-        fun faded(): Shader = android.graphics.ComposeShader(
-            LinearGradient(0f, 0f, w, 0f, intArrayOf(colorA, colorB, colorC), null, Shader.TileMode.CLAMP),
-            LinearGradient(0f, 0f, w, 0f,
-                intArrayOf(0x00000000, 0xFF000000.toInt(), 0xFF000000.toInt(), 0x00000000),
-                floatArrayOf(0f, 0.12f, 0.88f, 1f), Shader.TileMode.CLAMP),
-            PorterDuff.Mode.DST_IN,
+        // Fargeovergang og uttoning mot kantene i én enkel gradient (gjennomsiktig i endene):
+        // ingen ekstra tegnelag og ingen sammensatte shadere → lett for svake grafikkbrikker
+        fun faded(): Shader = LinearGradient(
+            0f, 0f, w, 0f,
+            intArrayOf(colorA and 0x00FFFFFF, colorA, colorB, colorC, colorC and 0x00FFFFFF),
+            floatArrayOf(0f, 0.12f, 0.5f, 0.88f, 1f),
+            Shader.TileMode.CLAMP,
         )
         fill.shader = faded()
         line.shader = faded()
