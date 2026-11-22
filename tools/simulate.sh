@@ -12,8 +12,8 @@ mkdir -p "$OUT"
 L=no.carlink.launcher/no.carlink.ReceiverActivity
 S=no.carlink.sender/no.carlink.SenderActivity
 
-if [ "$SIM" = "21x9" ]; then DENS=240; DIV_X=925; DIV_Y=412; NEXT_X=280; NEXT_Y=730
-else                         DENS=320; DIV_X=950; DIV_Y=540; NEXT_X=374; NEXT_Y=956; fi
+if [ "$SIM" = "21x9" ]; then DENS=240; DIV_X=925; DIV_Y=412; NEXT_X=280; NEXT_Y=730; GAP_X=792;  GAP_Y=357
+else                         DENS=320; DIV_X=950; DIV_Y=540; NEXT_X=374; NEXT_Y=956; GAP_X=1072; GAP_Y=345; fi
 
 shot() {
   sleep "$2"
@@ -49,7 +49,7 @@ go music; shot 07-musikk 5
 go apps;  shot 08-apper-panel 5
 go drawer; shot 08b-appoversikt 4
 # Trykk mellom to apper (skal IKKE lukke), så trykk i hjørnet utenfor (skal lukke → hjemmeskjerm)
-adb shell input tap 960 470
+adb shell input tap $GAP_X $GAP_Y
           shot 08c-trykk-mellom-apper 2
 adb shell input tap 80 760
           shot 08d-trykk-utenfor 2

@@ -180,18 +180,26 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
         panel.requestLayout()
     }
 
-    private fun appTile(a: App): View = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(6.dp, 12.dp, 6.dp, 10.dp)
-        addView(ImageView(context).apply { setImageDrawable(a.icon) }, LinearLayout.LayoutParams(64.dp, 64.dp))
-        addView(context.label(a.label, 13f, 0xFFFFFFFF.toInt()).apply {
-            maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER
-            setPadding(0, 8.dp, 0, 0); setShadowLayer(8f, 0f, 1f, 0x99000000.toInt())
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        isClickable = true
-        setOnClickListener { openApp(a, Launch.defaultMode(context)) }
-        setOnLongClickListener { v -> appMenu(v, a); true }
+    /**
+     * En rute i rutenettet. Bare selve ikonet + navnet kan trykkes; det tomme rommet rundt
+     * (mellom appene) gjør ingenting, så man ikke åpner en app ved et uhell.
+     */
+    private fun appTile(a: App): View = FrameLayout(context).apply {
+        val hit = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(4.dp, 4.dp, 4.dp, 4.dp)
+            addView(ImageView(context).apply { setImageDrawable(a.icon) }, LinearLayout.LayoutParams(64.dp, 64.dp))
+            addView(context.label(a.label, 13f, 0xFFFFFFFF.toInt()).apply {
+                maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER
+                maxWidth = colW - 16.dp
+                setPadding(0, 8.dp, 0, 0); setShadowLayer(8f, 0f, 1f, 0x99000000.toInt())
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            isClickable = true
+            setOnClickListener { openApp(a, Launch.defaultMode(context)) }
+            setOnLongClickListener { v -> appMenu(v, a); true }
+        }
+        addView(hit, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = 10.dp })
     }
 
     private fun buildModeRow() {
