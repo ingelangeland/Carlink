@@ -118,6 +118,7 @@ jobs:
             sim/RAPPORT-*.txt
             sim/KRASJ-*.txt
             sim/EMULATOR-*.txt
+            sim/LOGG-SISTE-*.txt
 
       - name: Feil hvis appen krasjet
         run: test -z "$(ls sim/KRASJ-*.txt 2>/dev/null)"

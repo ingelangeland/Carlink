@@ -28,10 +28,13 @@ adb shell wm density "$DENS"
 adb shell input keyevent 82
 adb shell wm size
 
+# Diagnose: skjermbilde av vanlig Android før CarLink startes, og fortløpende systemlogg
+"$ADB_BIN" logcat -v time > "$OUT/logcat-stream.txt" 2>&1 &
+shot 00-for-carlink 2
+
 echo "== Installerer"
 adb install -r -g ut/CarLink-bilskjerm.apk
 adb install -r -g ut/CarLink-Sender-telefon.apk
-adb logcat -c
 
 go home;  shot 01-hjem 12
           shot 02-hjem-litt-senere 3
@@ -76,5 +79,6 @@ adb logcat -d > "$OUT/logcat.txt"
   echo; echo "APK-størrelser:"; ls -l ut/*.apk | awk '{printf "  %s  %.1f MB\n", $9, $5/1048576}'
 } > "$OUT/RAPPORT-$SIM.txt"
 cat "$OUT/RAPPORT-$SIM.txt"
+tail -400 "$OUT/logcat-stream.txt" > "$OUT/LOGG-SISTE-$SIM.txt" 2>/dev/null
 if grep -A3 "FATAL EXCEPTION" "$OUT/logcat.txt" | grep -q carlink; then echo "KRASJ FUNNET" > "$OUT/KRASJ-$SIM.txt"; fi
 exit 0
