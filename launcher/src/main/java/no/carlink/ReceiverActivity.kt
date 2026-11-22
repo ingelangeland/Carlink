@@ -47,6 +47,8 @@ class ReceiverActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        DebugFlags.noVisualizer = intent?.getBooleanExtra("noviz", false) == true
+        DebugFlags.noArt = intent?.getBooleanExtra("noart", false) == true
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {

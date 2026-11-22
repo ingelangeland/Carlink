@@ -6,6 +6,7 @@ ADB_BIN="$(command -v adb)"
 adb() { timeout 120 "$ADB_BIN" "$@"; }
 alive() { [ "$(timeout 10 "$ADB_BIN" get-state 2>/dev/null)" = "device" ]; }
 SIM="${SIM:-16x9}"
+TAG="${TAG:-}"
 OUT=sim
 mkdir -p "$OUT"
 L=no.carlink.launcher/no.carlink.ReceiverActivity
@@ -16,10 +17,11 @@ else                         DENS=320; DIV_X=950; DIV_Y=540; NEXT_X=374; NEXT_Y=
 
 shot() {
   sleep "$2"
-  if ! alive; then echo "EMULATOREN SVARER IKKE (ved $1)" | tee -a "$OUT/EMULATOR-$SIM.txt"; return; fi
-  adb exec-out screencap -p > "$OUT/$SIM-$1.png"; echo "skjermbilde $SIM-$1"
+  if ! alive; then echo "EMULATOREN SVARER IKKE (ved $1)" | tee -a "$OUT/EMULATOR-$SIM$TAG.txt"; return; fi
+  adb exec-out screencap -p > "$OUT/$SIM$TAG-$1.png"; echo "skjermbilde $SIM$TAG-$1"
 }
-go() { adb shell am start -W -n "$L" --ez demo true --es show "$1" > /dev/null; }
+EXTRA="${EXTRA:-}"
+go() { adb shell am start -W -n "$L" --ez demo true --es show "$1" $EXTRA > /dev/null; }
 
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
@@ -77,8 +79,8 @@ adb logcat -d > "$OUT/logcat.txt"
   echo -n "  bilskjerm: "; grep -m1 "TOTAL PSS" "$OUT/minne-bilskjerm.txt" || true
   [ -f "$OUT/minne-telefon.txt" ] && { echo -n "  telefon:   "; grep -m1 "TOTAL PSS" "$OUT/minne-telefon.txt"; }
   echo; echo "APK-størrelser:"; ls -l ut/*.apk | awk '{printf "  %s  %.1f MB\n", $9, $5/1048576}'
-} > "$OUT/RAPPORT-$SIM.txt"
-cat "$OUT/RAPPORT-$SIM.txt"
-tail -400 "$OUT/logcat-stream.txt" > "$OUT/LOGG-SISTE-$SIM.txt" 2>/dev/null
-if grep -A3 "FATAL EXCEPTION" "$OUT/logcat.txt" | grep -q carlink; then echo "KRASJ FUNNET" > "$OUT/KRASJ-$SIM.txt"; fi
+} > "$OUT/RAPPORT-$SIM$TAG.txt"
+cat "$OUT/RAPPORT-$SIM$TAG.txt"
+tail -400 "$OUT/logcat-stream.txt" > "$OUT/LOGG-SISTE-$SIM$TAG.txt" 2>/dev/null
+if grep -A3 "FATAL EXCEPTION" "$OUT/logcat.txt" | grep -q carlink; then echo "KRASJ FUNNET" > "$OUT/KRASJ-$SIM$TAG.txt"; fi
 exit 0

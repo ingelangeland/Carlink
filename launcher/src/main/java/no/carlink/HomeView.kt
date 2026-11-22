@@ -198,6 +198,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         }
         bar.addView(txt, LinearLayout.LayoutParams(0, WRAP, 0.42f))
         bar.addView(viz, LinearLayout.LayoutParams(0, 46.dp, 0.58f))
+        if (DebugFlags.noVisualizer) viz.visibility = View.INVISIBLE
         // Linjen er større enn plassen sin med fadingen, så selve flaten står der den sto
         col.addView(bar, lp(MATCH, (88 + 2 * BAR_FEATHER).dp).apply {
             setMargins(-BAR_FEATHER.dp, -BAR_FEATHER.dp, -BAR_FEATHER.dp, -BAR_FEATHER.dp)

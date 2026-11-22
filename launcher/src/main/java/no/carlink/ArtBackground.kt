@@ -119,6 +119,7 @@ class ArtBackground(ctx: Context) : ScopedFrame(ctx) {
     }
 
     private fun setArt(bmp: Bitmap?, id: Int) {
+        if (DebugFlags.noArt) return
         if (id == lastId) return
         lastId = id
         if (bmp == null) {

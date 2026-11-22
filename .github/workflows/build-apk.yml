@@ -70,10 +70,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - sim: "21x9"
-            skin: "1920x824"
-          - sim: "16x9"
-            skin: "1920x1080"
+          - { sim: "16x9", skin: "1920x1080", gpu: "swiftshader_indirect", tag: "-alt",          extra: "" }
+          - { sim: "16x9", skin: "1920x1080", gpu: "swiftshader_indirect", tag: "-uten-bolger", extra: "--ez noviz true" }
+          - { sim: "16x9", skin: "1920x1080", gpu: "swiftshader_indirect", tag: "-uten-cover",  extra: "--ez noart true" }
+          - { sim: "21x9", skin: "1920x824",  gpu: "guest",                tag: "-gpu-guest",   extra: "" }
     steps:
       - uses: actions/checkout@v4
 
@@ -88,17 +88,19 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Kjør simulering (${{ matrix.sim }})
+      - name: Kjør simulering (${{ matrix.sim }}${{ matrix.tag }})
         uses: reactivecircus/android-emulator-runner@v2
         env:
           SIM: ${{ matrix.sim }}
+          TAG: ${{ matrix.tag }}
+          EXTRA: ${{ matrix.extra }}
         with:
           api-level: 34
           arch: x86_64
           target: google_apis
           ram-size: 4096M
           disable-animations: false
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin ${{ matrix.skin }}
+          emulator-options: -no-window -gpu ${{ matrix.gpu }} -no-snapshot -noaudio -no-boot-anim -skin ${{ matrix.skin }}
           script: bash tools/simulate.sh
 
       - name: Rydd bort tomme filer
