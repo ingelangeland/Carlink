@@ -41,17 +41,29 @@ object RoadCache {
         val now = SystemClock.elapsedRealtime()
         if (now - lastTry < 20_000) return          // høyst ett forsøk hvert 20. sekund
         lastTry = now
-        job = scope.launch(Dispatchers.IO) { runCatching { fetch(lat, lon) }.getOrNull()?.let { area.value = it } }
+        job = scope.launch(Dispatchers.IO) {
+            // Hovedtjeneren, og et offentlig speil hvis den er opptatt
+            for (server in SERVERS) {
+                val r = runCatching { fetch(server, lat, lon) }
+                r.onSuccess { a ->
+                    android.util.Log.i("CarLinkRoads", "${a.roads.size} veier hentet fra $server")
+                    area.value = a; return@launch
+                }.onFailure { android.util.Log.w("CarLinkRoads", "feil fra $server: ${it.message}") }
+            }
+        }
     }
 
-    private fun fetch(lat: Double, lon: Double): Area {
+    private val SERVERS = listOf("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")
+
+    private fun fetch(server: String, lat: Double, lon: Double): Area {
         val q = "[out:json][timeout:15];way(around:$RADIUS_M,$lat,$lon)[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|" +
             "unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|service)$\"];out tags geom;"
-        val c = URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
+        val c = URL(server).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000; c.readTimeout = 20_000
         c.requestMethod = "POST"; c.doOutput = true
         c.setRequestProperty("User-Agent", "CarLink/1.0 (Android-bilskjerm)")
         c.outputStream.use { it.write(("data=" + URLEncoder.encode(q, "UTF-8")).toByteArray()) }
+        if (c.responseCode != 200) throw java.io.IOException("HTTP ${c.responseCode}")
         val txt = c.inputStream.bufferedReader().use { it.readText() }
         val els = JSONObject(txt).getJSONArray("elements")
         val roads = ArrayList<Road>(els.length())
