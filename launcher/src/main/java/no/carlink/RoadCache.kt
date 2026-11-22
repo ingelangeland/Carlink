@@ -27,7 +27,7 @@ object RoadCache {
     class Road(val pts: DoubleArray, val cls: Int, val name: String)   // pts = lat,lon,lat,lon …
     class Area(val lat: Double, val lon: Double, val roads: List<Road>)
 
-    const val RADIUS_M = 900
+    const val RADIUS_M = 800
     val area = MutableStateFlow<Area?>(null)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
@@ -42,7 +42,9 @@ object RoadCache {
         if (now - lastTry < 20_000) return          // høyst ett forsøk hvert 20. sekund
         lastTry = now
         job = scope.launch(Dispatchers.IO) {
-            // Hovedtjeneren, og et offentlig speil hvis den er opptatt
+            // Først: siste lagrede område (vises med en gang, også uten nett)
+            if (area.value == null) loadCached(lat, lon)?.let { area.value = it; if (meters(it.lat, it.lon, lat, lon) < 400) return@launch }
+            // Så: to offentlige tjenere, den andre hvis den første er treg
             for (server in SERVERS) {
                 val r = runCatching { fetch(server, lat, lon) }
                 r.onSuccess { a ->
@@ -53,18 +55,34 @@ object RoadCache {
         }
     }
 
-    private val SERVERS = listOf("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")
+    private val SERVERS = listOf("https://overpass.kumi.systems/api/interpreter", "https://overpass-api.de/api/interpreter")
+    @Volatile var cacheDir: java.io.File? = null      // settes av appen: siste område lagres til neste oppstart
 
     private fun fetch(server: String, lat: Double, lon: Double): Area {
-        val q = "[out:json][timeout:15];way(around:$RADIUS_M,$lat,$lon)[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|" +
-            "unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|service)$\"];out tags geom;"
+        val q = "[out:json][timeout:12];way(around:$RADIUS_M,$lat,$lon)[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|" +
+            "unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"];out tags geom qt;"
         val c = URL(server).openConnection() as HttpURLConnection
-        c.connectTimeout = 10_000; c.readTimeout = 20_000
+        c.connectTimeout = 8_000; c.readTimeout = 25_000
         c.requestMethod = "POST"; c.doOutput = true
         c.setRequestProperty("User-Agent", "CarLink/1.0 (Android-bilskjerm)")
         c.outputStream.use { it.write(("data=" + URLEncoder.encode(q, "UTF-8")).toByteArray()) }
         if (c.responseCode != 200) throw java.io.IOException("HTTP ${c.responseCode}")
         val txt = c.inputStream.bufferedReader().use { it.readText() }
+        val a = parse(txt, lat, lon)
+        runCatching { cacheDir?.let { java.io.File(it, "veier.json").writeText("$lat,$lon\n$txt") } }
+        return a
+    }
+
+    private fun loadCached(lat: Double, lon: Double): Area? = runCatching {
+        val f = java.io.File(cacheDir ?: return null, "veier.json")
+        if (!f.exists()) return null
+        val txt = f.readText(); val nl = txt.indexOf('\n')
+        val (la, lo) = txt.substring(0, nl).split(",").map { it.toDouble() }
+        if (meters(la, lo, lat, lon) > RADIUS_M) return null
+        parse(txt.substring(nl + 1), la, lo)
+    }.getOrNull()
+
+    private fun parse(txt: String, lat: Double, lon: Double): Area {
         val els = JSONObject(txt).getJSONArray("elements")
         val roads = ArrayList<Road>(els.length())
         for (i in 0 until els.length()) {
