@@ -1,0 +1,51 @@
+name: Bygg APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Bygg appene
+        run: gradle :launcher:assembleDebug :sender:assembleDebug --stacktrace
+
+      - name: Gi filene tydelige navn
+        run: |
+          mkdir -p ut
+          cp launcher/build/outputs/apk/debug/launcher-debug.apk ut/CarLink-bilskjerm.apk
+          cp sender/build/outputs/apk/debug/sender-debug.apk ut/CarLink-Sender-telefon.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CarLink-APK
+          path: ut/*.apk
+
+      - name: Legg ut som nedlastbar versjon
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: siste
+          name: Siste versjon
+          prerelease: false
+          make_latest: true
+          files: ut/*.apk
+          body: |
+            CarLink-bilskjerm.apk – installeres på skjermen i bilen.
+            CarLink-Sender-telefon.apk – installeres på telefonen.
