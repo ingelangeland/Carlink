@@ -65,7 +65,15 @@ jobs:
   simulate:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sim: "21x9"
+            skin: "1920x824"
+          - sim: "16x9"
+            skin: "1920x1080"
     steps:
       - uses: actions/checkout@v4
 
@@ -80,15 +88,17 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Kjør simulering
+      - name: Kjør simulering (${{ matrix.sim }})
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SIM: ${{ matrix.sim }}
         with:
           api-level: 34
           arch: x86_64
           target: google_apis
           ram-size: 4096M
           disable-animations: false
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin ${{ matrix.skin }}
           script: bash tools/simulate.sh
 
       - name: Rydd bort tomme filer
@@ -105,9 +115,9 @@ jobs:
           make_latest: false
           files: |
             sim/*.png
-            sim/RAPPORT.txt
-            sim/KRASJ.txt
-            sim/EMULATOR.txt
+            sim/RAPPORT-*.txt
+            sim/KRASJ-*.txt
+            sim/EMULATOR-*.txt
 
       - name: Feil hvis appen krasjet
-        run: test ! -f sim/KRASJ.txt
+        run: test -z "$(ls sim/KRASJ-*.txt 2>/dev/null)"
