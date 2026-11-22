@@ -21,6 +21,13 @@ object Ambient {
      */
     val topRightNeed = MutableStateFlow(0f)
 
+    /**
+     * Navigasjon som vises i kortet og i kartet: Google Maps på bilenheten hvis den navigerer
+     * (uansett hvordan ruten ble startet), ellers Google Maps på telefonen.
+     */
+    val nav: kotlinx.coroutines.flow.Flow<Hub.NavInfo?> =
+        kotlinx.coroutines.flow.combine(Hub.localNav, Hub.remoteNav) { car, phone -> car ?: phone }
+
     /** App-oversikten dekker skjermen: animasjoner bak (lydbølgen) kan hvile. */
     @Volatile var overlayOpen = false
 

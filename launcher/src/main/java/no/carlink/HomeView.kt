@@ -270,7 +270,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
             }
         }
         scope.launch {
-            Hub.remoteNav.collect { n ->
+            Ambient.nav.collect { n ->
                 navBox.visibility = if (n == null) GONE else VISIBLE
                 if (n != null) {
                     navIcon.setImageBitmap(n.icon); navIcon.setColorFilter(0xFFFFFFFF.toInt())

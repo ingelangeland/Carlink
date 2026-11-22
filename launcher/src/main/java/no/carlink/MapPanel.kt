@@ -118,7 +118,7 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
         map.onResume()
         scope.launch { DayNight.night.collect { animateNight(it) } }
         scope.launch {
-            Hub.remoteNav.collect { n ->
+            Ambient.nav.collect { n ->
                 navCard.visibility = if (n == null) GONE else VISIBLE
                 if (n != null) {
                     navTitle.text = n.title
