@@ -76,7 +76,7 @@ NEXT_X=$(dp 187); NEXT_Y=$((H - $(dp 62)))
 OUT_X=$(dp 30); OUT_Y=$((H - $(dp 20)))
 
           shot 02-hjem-litt-senere 3
-go nav;   shot 03-hjem-navigasjon 5
+go nav;   shot 03-hjem-navigasjon 14
 go split; shot 04-delt-skjerm 15
 adb shell input swipe $DIV_X $DIV_Y $((DIV_X-280)) $DIV_Y 900
           shot 05-delt-skjerm-etter-dra 3

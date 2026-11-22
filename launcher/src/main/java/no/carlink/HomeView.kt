@@ -26,6 +26,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import no.carlink.launcher.R
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -65,11 +66,15 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
     private val accentLine = View(ctx)
     private val sourceTv = ctx.label("", 11f, C.ACCENT, true).apply { letterSpacing = 0.08f }
 
-    private val navBox = LinearLayout(ctx)
+    // Navigasjonskortet: forenklet kart (bare veier) bak, tydelig svingpil og tekst oppå
+    private val navCard = FrameLayout(ctx)
+    private val miniMap = MiniMapView(ctx)
+    private val navIconBg = FrameLayout(ctx)
     private val navIcon = ImageView(ctx)
-    private val navTitle = ctx.label("", 30f, 0xFFFFFFFF.toInt(), true).shadow()
-    private val navText = ctx.label("", 17f, 0xE6FFFFFF.toInt()).apply { maxLines = 3; gravity = Gravity.CENTER; maxWidth = 380.dp }
-    private val navSub = ctx.label("", 14f, C.OK, true)
+    private val navTitle = ctx.label("", 28f, 0xFFFFFFFF.toInt(), true).shadow()
+    private val navText = ctx.label("", 16f, 0xF2FFFFFF.toInt()).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }.shadow()
+    private val navSub = ctx.label("", 13f, C.OK, true).shadow()
+    private val navScrim = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0, 0))
 
     private val favGrid = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
     private val leftCol = LinearLayout(ctx)
@@ -146,19 +151,35 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
 
         // Høyre side står åpen så coveret synes. Under navigasjon vises neste sving her.
         val right = rightCol
-        navBox.apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(28.dp, 22.dp, 28.dp, 22.dp)
+        navCard.apply {
             visibility = GONE
-            addView(navIcon, LinearLayout.LayoutParams(84.dp, 84.dp))
-            addView(navTitle, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = 6.dp })
-            addView(navText, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = 4.dp })
-            addView(navSub, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = 6.dp })
+            clipToOutline = true                     // kartet følger de runde hjørnene
+            addView(miniMap, FrameLayout.LayoutParams(MATCH, MATCH))
+            // Nederst: gatenavn og ankomst over en svak mørk toning, så teksten alltid kan leses
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                background = navScrim
+                setPadding(18.dp, 26.dp, 18.dp, 14.dp)
+                addView(navText); addView(navSub, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = 3.dp })
+            }, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM))
+            // Øverst til venstre: svingpilen (helt tett, godt synlig) og avstanden
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                navIconBg.addView(navIcon, FrameLayout.LayoutParams(44.dp, 44.dp, Gravity.CENTER))
+                addView(navIconBg, LinearLayout.LayoutParams(60.dp, 60.dp))
+                addView(navTitle, LinearLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = 12.dp })
+            }, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(14.dp, 14.dp, 14.dp, 0) })
             setOnClickListener { actions.openMap() }
         }
-        glass += Glass(navBox, 0xD9, 28)
-        right.addView(navBox, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
+        glass += Glass(navCard, 0x59, 28)          // gjennomsiktig: coveret synes gjennom
+        right.addView(navCard, FrameLayout.LayoutParams(0, 0, Gravity.CENTER))
+        // Kortets størrelse følger plassen: nesten hele høyden, litt bredere enn høyt
+        right.addOnLayoutChangeListener { v, _, t, _, b, _, ot, _, ob ->
+            if (b - t == ob - ot && navCard.layoutParams.width > 0) return@addOnLayoutChangeListener
+            val h = min((b - t) - 16.dp, 300.dp).coerceAtLeast(140.dp)
+            val w = min((h * 1.35f).toInt(), v.width - 8.dp)
+            post { navCard.layoutParams = (navCard.layoutParams as FrameLayout.LayoutParams).apply { width = w; height = h } }
+        }
         // Trykk på det åpne coveret = musikkvisning
         right.setOnClickListener { actions.openMusic() }
         mid.addView(right, LinearLayout.LayoutParams(0, MATCH, 0.56f).apply { leftMargin = 28.dp })
@@ -219,6 +240,9 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
 
     private fun applyTheme(t: Ambient.Theme) {
         (glass + favGlass).forEach { it.view.background = glassBg(t, it) }
+        miniMap.accent = t.accent
+        navIconBg.background = rounded(Ambient.alpha(Ambient.deep(t.dark), 0xCC), 16)
+        navScrim.colors = intArrayOf(Ambient.alpha(Ambient.deep(t.dark), 0xD0), Ambient.alpha(Ambient.deep(t.dark), 0x00))
         accentLine.background = rounded(t.accent, 2)
         progress.progressTintList = ColorStateList.valueOf(t.accent)
         sourceTv.setTextColor(t.accent)
@@ -271,8 +295,10 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         }
         scope.launch {
             Hub.remoteNav.collect { n ->
-                navBox.visibility = if (n == null) GONE else VISIBLE
+                navCard.visibility = if (n == null) GONE else VISIBLE
                 if (n != null) {
+                    miniMap.setTargetStreet(RoadCache.streetFrom(n.title, n.text))
+                    Hub.remoteLoc.value?.let { miniMap.setLocation(it) }
                     navIcon.setImageBitmap(n.icon); navIcon.setColorFilter(0xFFFFFFFF.toInt())
                     navIcon.visibility = if (n.icon == null) GONE else VISIBLE
                     navTitle.text = n.title
@@ -281,6 +307,9 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
                 }
             }
         }
+        // Minikartet får posisjon og veier bare mens navigasjonskortet vises
+        scope.launch { Hub.remoteLoc.collect { l -> if (l != null && navCard.visibility == VISIBLE) miniMap.setLocation(l) } }
+        scope.launch { RoadCache.area.collect { miniMap.setArea(it) } }
         scope.launch { Weather.now.collect { w -> weatherTv.text = w?.let { "${Weather.icon(it.symbol)}  ${it.tempC}°" } ?: "" } }
         scope.launch { while (isActive) { Weather.refresh(context); delay(60_000) } }
         scope.launch { Favorites.changed.collect { loadFavorites() } }
