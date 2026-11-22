@@ -18,14 +18,6 @@ read W H < <(timeout 30 "$ADB_BIN" shell wm size | tail -1 | sed 's/.*: //; s/x/
 # Launcheren skalerer selv opp lave tettheter (skjermhøyde ≈ 500 dp), regn med den effektive
 EFF=$(awk -v h="$H" -v w="$W" -v s="$DENS" 'BEGIN{m=(h<w)?h:w; if (m*160/s > 600) printf "%d", int(m*160/500); else print s}')
 dp() { awk -v d="$1" -v s="$EFF" 'BEGIN{printf "%d", d*s/160}'; }
-# Skillelinjen mellom panel 1 og 2 i delt visning (meny 88dp, marg 10dp, 45 % / 30 % / 25 %)
-DIV_X=$(awk -v W="$W" -v s="$EFF" 'BEGIN{k=s/160; avail=W-(88+20)*k-2*14*k; printf "%d", (98)*k + 0.45*avail + 7*k}')
-DIV_Y=$((H / 2))
-# «Neste låt» i musikklinjen
-NEXT_X=$(dp 187); NEXT_Y=$((H - $(dp 62)))
-# Trykk utenfor app-oversikten (nederst til venstre)
-OUT_X=$(dp 30); OUT_Y=$((H - $(dp 20)))
-
 shot() {
   sleep "$2"
   if ! alive; then echo "EMULATOREN SVARER IKKE (ved $1)" | tee -a "$OUT/EMULATOR-$SIM$TAG.txt"; return; fi
@@ -67,6 +59,18 @@ adb install -r -g ut/CarLink-Sender-telefon.apk
 go home;  shot 01-hjem 12
 adb logcat -d -s CarLinkUi:* > "$OUT/ui.txt" 2>&1 || true
 adb shell wm density >> "$OUT/ui.txt" 2>&1 || true
+# Bruk tettheten CarLink faktisk valgte (står i loggen)
+E2=$(grep -o "bruker [0-9]* dpi" "$OUT/ui.txt" | tail -1 | grep -o "[0-9]*")
+[ -n "$E2" ] && EFF=$E2
+echo "CarLink-tetthet: $EFF"
+# Skillelinjen mellom panel 1 og 2 i delt visning (meny 88dp, marg 10dp, 45 % / 30 % / 25 %)
+DIV_X=$(awk -v W="$W" -v s="$EFF" 'BEGIN{k=s/160; avail=W-(88+20)*k-2*14*k; printf "%d", (98)*k + 0.45*avail + 7*k}')
+DIV_Y=$((H / 2))
+# «Neste låt» i musikklinjen
+NEXT_X=$(dp 187); NEXT_Y=$((H - $(dp 62)))
+# Trykk utenfor app-oversikten (nederst til venstre)
+OUT_X=$(dp 30); OUT_Y=$((H - $(dp 20)))
+
           shot 02-hjem-litt-senere 3
 go nav;   shot 03-hjem-navigasjon 5
 go split; shot 04-delt-skjerm 15
