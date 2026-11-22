@@ -62,6 +62,19 @@ Bluetooth brukes bare til å finne hverandre. Telefonen sender Wi-Fi-adressen si
 - **Apper:** Trykk for å åpne. Langt trykk gir *Åpne ved siden av* (Androids delte skjerm) eller *flytende vindu*.
 - Tilbake-knappen lukker ikke hjemmeskjermen.
 
+## Demomodus (prøv uten telefon)
+På bilskjermen: *Mer → Demomodus*. Da later skjermen som om en telefon er koblet til. Den spiller av tre fiktive låter med cover, kjører en GPS-rute gjennom Oslo i 60 km/t, viser sving-for-sving og animerer lydbølgene. Musikknappene virker. Slå av på samme sted.
+
+## Automatisk simulering
+Etter hver bygging på GitHub startes Android-emulatorer i 21:9 og 16:9. De installerer begge appene, går gjennom hjem, navigasjon, delt skjerm (også dra-skillelinjen), kart, musikk, apper, låtbytte og telefonappen, og måler bildeflyt, CPU og minne. Skjermbilder og rapport ligger under *Releases → «Simulering»*. Byggingen markeres som feilet hvis noe krasjer.
+
+## Ytelse
+- Optimaliserte release-bygg (R8): bilskjerm-appen er 3,1 MB (før 13 MB), telefon-appen 2,3 MB (før 12 MB).
+- Lydbølgene tegnes med 30 bilder/s i et lite programvarelag og stopper når de ikke synes.
+- Bakgrunnen tegnes bare når coveret byttes.
+- Kart og paneler lages først når delt visning åpnes, og fjernes når hjemmeskjermen vises.
+- Coveret kodes utenfor hovedtråden på telefonen. Lydbuffere gjenbrukes.
+
 ## Begrensninger
 - Andre apper kan ikke bygges inn *i* CarLink. Det får bare systemapper som Android Auto lov til. Eksterne apper åpnes ved siden av eller i vindu.
 - Kartet i CarLink er OpenStreetMap. Google Maps åpnes som egen app.
