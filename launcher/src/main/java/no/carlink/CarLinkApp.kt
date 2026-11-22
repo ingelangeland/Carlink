@@ -9,6 +9,5 @@ class CarLinkApp : Application() {
         Configuration.getInstance().load(this, prefs())
         Configuration.getInstance().userAgentValue = packageName
         AppCatalog.start(this)
-        RoadCache.cacheDir = cacheDir
     }
 }

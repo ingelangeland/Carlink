@@ -84,7 +84,6 @@ object DemoFeeder {
                 }
             }
             // GPS: én posisjon i sekundet langs ruta, ca. 60 km/t
-            RoadCache.demoArea(route)
             launch {
                 var seg = 0
                 var f = 0.0
