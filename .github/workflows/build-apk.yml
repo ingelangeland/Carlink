@@ -78,12 +78,16 @@ jobs:
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       - name: Kjør Lint
         run: |
-          gradle :launcher:lintRelease :sender:lintRelease --continue || true
+          set +e
           mkdir -p lint
-          cp launcher/build/lint.txt lint/LINT-bilskjerm.txt 2>/dev/null || echo "ingen rapport" > lint/LINT-bilskjerm.txt
-          cp sender/build/lint.txt lint/LINT-telefon.txt 2>/dev/null || echo "ingen rapport" > lint/LINT-telefon.txt
-          tail -3 lint/*.txt
+          gradle :launcher:lintRelease :sender:lintRelease --continue > lint/LINT-gradle.txt 2>&1
+          cp launcher/build/lint.txt lint/LINT-bilskjerm.txt || echo "ingen rapport" > lint/LINT-bilskjerm.txt
+          cp sender/build/lint.txt lint/LINT-telefon.txt || echo "ingen rapport" > lint/LINT-telefon.txt
+          tail -c 20000 lint/LINT-gradle.txt > lint/LINT-gradle-slutt.txt
+          rm lint/LINT-gradle.txt
+          exit 0
       - uses: softprops/action-gh-release@v2
+        if: always()
         with:
           tag_name: simulering
           files: lint/*.txt
