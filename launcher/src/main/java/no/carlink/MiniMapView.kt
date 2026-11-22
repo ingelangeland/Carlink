@@ -65,9 +65,12 @@ class MiniMapView(ctx: Context) : View(ctx) {
         if (a == null) { roads = null; target = null; invalidate(); return }
         val name = targetName
         renderJob = RoadCache.scope.launch {
-            val bmp = RoadCache.render(a, pxPerM, density)
-            val t = name?.let { RoadCache.targetPath(a, pxPerM, it) }
-            post { if (area === a) { roads = bmp; target = t; invalidate() } }
+            try {
+                val bmp = RoadCache.render(a, pxPerM, density)
+                val t = name?.let { RoadCache.targetPath(a, pxPerM, it) }
+                android.util.Log.i("CarLinkRoads", "minikart tegnet: ${a.roads.size} veier, ${bmp.width}px, målvei=${t != null}")
+                post { if (area === a) { roads = bmp; target = t; invalidate() } }
+            } catch (e: Exception) { android.util.Log.w("CarLinkRoads", "tegning feilet", e) }
         }
     }
 
@@ -92,8 +95,10 @@ class MiniMapView(ctx: Context) : View(ctx) {
 
     override fun onDetachedFromWindow() { anim.cancel(); super.onDetachedFromWindow() }
 
+    private var logged = false
     override fun onDraw(canvas: Canvas) {
         val a = area; val bmp = roads
+        if (!logged && hasPos) { logged = bmp != null; android.util.Log.i("CarLinkRoads", "tegner: område=${a != null} bilde=${bmp != null} ${width}x$height") }
         val cx = width / 2f; val cy = height * 0.62f
         if (a != null && bmp != null && hasPos) {
             RoadCache.project(a, pxPerM, bmp.width / 2f, lat, lon, xy)
