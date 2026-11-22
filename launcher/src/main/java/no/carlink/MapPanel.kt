@@ -57,6 +57,9 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
         marker.isFlat = true
         marker.setInfoWindow(null)
         map.setOnTouchListener { _, e -> if (e.actionMasked == MotionEvent.ACTION_MOVE) setFollow(false); false }
+        // Kartet tegnes i et eget grafikklag: det mørke fargefilteret regnes bare ut når kartet
+        // faktisk endres (flytting, ny posisjon), ikke hver gang noe annet på skjermen beveger seg.
+        map.setLayerType(LAYER_TYPE_HARDWARE, null)
         addView(map, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
 
         // Søkefelt øverst -> åpner Google Maps

@@ -116,12 +116,17 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
 
     private fun animateTo(target: Float, ms: Long) {
         anim?.cancel()
+        // Appene animeres som ett ferdig bilde (grafikklag) i stedet for å tegnes på nytt hvert bilde
+        panel.setLayerType(LAYER_TYPE_HARDWARE, null)
         anim = ValueAnimator.ofFloat(progress, target).apply {
             duration = ms
             interpolator = DecelerateInterpolator(1.6f)
             addUpdateListener { setProgress(it.animatedValue as Float) }
             addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: android.animation.Animator) { if (!isOpen && progress <= 0.001f) visibility = INVISIBLE }
+                override fun onAnimationEnd(a: android.animation.Animator) {
+                    panel.setLayerType(LAYER_TYPE_NONE, null)
+                    if (!isOpen && progress <= 0.001f) visibility = INVISIBLE
+                }
             })
             start()
         }
