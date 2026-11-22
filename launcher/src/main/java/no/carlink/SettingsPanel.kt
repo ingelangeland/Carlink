@@ -69,11 +69,9 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         box.addView(head, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 14.dp })
 
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        // Gruppene deler høyden likt, så alle (også den nederste) alltid får plass uten å kuttes
         groups.orientation = LinearLayout.VERTICAL
-        row.addView(ScrollView(ctx).apply {
-            isVerticalScrollBarEnabled = false; overScrollMode = OVER_SCROLL_NEVER
-            addView(groups)
-        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 0.3f))
+        row.addView(groups, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 0.3f))
         page.orientation = LinearLayout.VERTICAL
         page.setPadding(20.dp, 14.dp, 20.dp, 14.dp)
         pageCard.addView(ScrollView(ctx).apply {
@@ -116,8 +114,8 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         val t = theme
         pageCard.background = rounded(0x14FFFFFF, 18, 0x29FFFFFF)
         groups.removeAllViews()
-        for (g in Group.entries) groups.addView(groupPill(g, g == current, t),
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8.dp })
+        Group.entries.forEachIndexed { i, g -> groups.addView(groupPill(g, g == current, t),
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply { if (i > 0) topMargin = 8.dp }) }
         page.removeAllViews()
         page.addView(context.label(current.label, 18f, C.TEXT, true).apply { setPadding(0, 0, 0, 6.dp) })
         when (current) {
@@ -201,7 +199,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         val fg = if (on && ColorUtils.calculateLuminance(t.accent) > 0.5) 0xFF101418.toInt() else C.TEXT
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(14.dp, 12.dp, 14.dp, 12.dp)
+            setPadding(14.dp, 0, 14.dp, 0)
             background = rounded(if (on) t.accent else 0x14FFFFFF, 14)
             addView(ImageView(context).apply { setImageResource(g.icon); setColorFilter(fg) }, LinearLayout.LayoutParams(22.dp, 22.dp))
             addView(context.label(g.label, 15f, fg, on).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
