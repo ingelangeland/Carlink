@@ -303,6 +303,7 @@ class ReceiverActivity : AppCompatActivity() {
         when (show) {
             "home", "nav" -> showHome()
             "split" -> setLayout(listOf(PaneType.MAP, PaneType.MUSIC, PaneType.APPS))
+            "split2" -> setLayout(listOf(PaneType.MUSIC, PaneType.APPS))   // (måling uten kart)
             "map" -> setLayout(listOf(PaneType.MAP))
             "music" -> setLayout(listOf(PaneType.MUSIC))
             "apps" -> setLayout(listOf(PaneType.APPS))

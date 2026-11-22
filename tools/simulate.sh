@@ -108,6 +108,15 @@ for i in 1 2 3; do
   adb shell input swipe $((DIV_X-250)) $DIV_Y $DIV_X $DIV_Y 700; sleep 0.8
 done
 adb shell dumpsys gfxinfo no.carlink.launcher > "$OUT/grafikk-dra.txt"
+# Samme uten kart (skiller kartets tegnekostnad fra selve draingen)
+go split2; sleep 4
+DIV2_X=$(awk -v W="$W" -v s="$EFF" 'BEGIN{k=s/160; avail=W-(88+20)*k-14*k; printf "%d", (98)*k + 0.5*avail + 7*k}')
+adb shell dumpsys gfxinfo no.carlink.launcher reset > /dev/null
+for i in 1 2 3; do
+  adb shell input swipe $DIV2_X $DIV_Y $((DIV2_X-250)) $DIV_Y 700; sleep 0.8
+  adb shell input swipe $((DIV2_X-250)) $DIV_Y $DIV2_X $DIV_Y 700; sleep 0.8
+done
+adb shell dumpsys gfxinfo no.carlink.launcher > "$OUT/grafikk-dra-utenkart.txt"
 
 # --- Ekte tilkobling uten Bluetooth: skjermen finner telefonen over Wi-Fi (samme enhet i testen)
 # Gi tillatelsene på forhånd så veiviserne ikke dekker bildene
@@ -144,9 +153,11 @@ adb logcat -d > "$OUT/logcat.txt"
   echo; echo "Bildeflyt på hjemmeskjermen i 15 s:"
   grep -E "Total frames rendered|Janky frames|50th percentile|90th percentile|99th percentile" "$OUT/grafikk.txt" | head -6
   echo; echo "Flyt: åpne/lukke app-oversikten 4 ganger:"
-  grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile" "$OUT/grafikk-oversikt.txt" | head -4
+  grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile|50th gpu|90th gpu" "$OUT/grafikk-oversikt.txt" | head -6
   echo; echo "Flyt: dra skillelinjen i delt skjerm 6 ganger:"
-  grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile" "$OUT/grafikk-dra.txt" | head -4
+  grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile|50th gpu|90th gpu" "$OUT/grafikk-dra.txt" | head -6
+  echo; echo "Flyt: dra i delt skjerm uten kart:"
+  grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile|50th gpu|90th gpu" "$OUT/grafikk-dra-utenkart.txt" | head -6
   echo; echo "CPU (hjemmeskjerm med demo, programvaregrafikk i emulator):"; cat "$OUT/cpu.txt"
   echo; echo "Minne (TOTAL PSS i kB):"
   echo -n "  bilskjerm: "; grep -m1 "TOTAL PSS" "$OUT/minne-bilskjerm.txt" || true
