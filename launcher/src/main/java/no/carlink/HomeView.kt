@@ -377,12 +377,14 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
                 cardLp.width = 0; cardLp.height = WRAP; cardLp.weight = 0.46f
                 gridLp.width = 0; gridLp.height = MATCH; gridLp.weight = 0.54f
                 gridLp.topMargin = 0; gridLp.leftMargin = 24.dp
+                favGrid.gravity = Gravity.CENTER_VERTICAL
             } else {
                 leftCol.orientation = LinearLayout.VERTICAL
                 leftCol.gravity = Gravity.NO_GRAVITY
                 cardLp.width = MATCH; cardLp.height = WRAP; cardLp.weight = 0f
                 gridLp.width = MATCH; gridLp.height = 0; gridLp.weight = 1f
                 gridLp.topMargin = 12.dp; gridLp.leftMargin = 0
+                favGrid.gravity = Gravity.TOP
             }
             clockCard.layoutParams = cardLp
             favGrid.layoutParams = gridLp
@@ -395,12 +397,17 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         PopupMenu(context, anchor).apply {
             menu.add(0, 1, 0, "Åpne ved siden av (delt skjerm)")
             menu.add(0, 2, 1, "Åpne som flytende vindu")
-            menu.add(0, 3, 2, "Fjern fra Hjem")
+            val pos = Favorites.position(context, cn)
+            if (pos > 0) menu.add(0, 4, 2, "Flytt frem")
+            if (pos in 0 until Favorites.count(context) - 1) menu.add(0, 5, 3, "Flytt bak")
+            menu.add(0, 3, 4, "Fjern fra Hjem")
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     1 -> Launch.app(context, cn, Launch.Mode.ADJACENT)
                     2 -> Launch.app(context, cn, Launch.Mode.WINDOW)
                     3 -> Favorites.remove(context, cn)
+                    4 -> Favorites.move(context, cn, -1)
+                    5 -> Favorites.move(context, cn, +1)
                 }
                 true
             }

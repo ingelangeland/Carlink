@@ -37,6 +37,18 @@ object Favorites {
 
     fun remove(ctx: Context, cn: ComponentName) = save(ctx, list(ctx) - cn)
 
+    /** Flytt en favoritt frem (-1) eller bak (+1) i rekkefølgen. */
+    fun move(ctx: Context, cn: ComponentName, delta: Int) {
+        val l = list(ctx).toMutableList()
+        val i = l.indexOf(cn); if (i < 0) return
+        val j = (i + delta).coerceIn(0, l.lastIndex); if (i == j) return
+        l.removeAt(i); l.add(j, cn)
+        save(ctx, l)
+    }
+
+    fun position(ctx: Context, cn: ComponentName) = list(ctx).indexOf(cn)
+    fun count(ctx: Context) = list(ctx).size
+
     private fun save(ctx: Context, l: List<ComponentName>) {
         ctx.prefs().edit().putString(KEY, l.joinToString("|") { it.flattenToString() }).apply()
         changed.value = changed.value + 1
