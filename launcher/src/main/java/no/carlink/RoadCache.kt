@@ -144,6 +144,7 @@ object RoadCache {
         val size = (RADIUS_M * 2 * pxPerM).toInt().coerceIn(64, 2048)
         val half = size / 2f
         val b = Bitmap.createBitmap(size, size, Bitmap.Config.ALPHA_8)
+        b.density = Bitmap.DENSITY_NONE   // piksler = piksler (ellers skalerer Android bildet etter skjermtettheten)
         val c = Canvas(b)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
         val xy = FloatArray(2)
