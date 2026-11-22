@@ -62,6 +62,11 @@ class JoystickActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
             setBackgroundColor(C.BG); setPadding(40.dp, 30.dp, 40.dp, 30.dp)
@@ -96,6 +101,7 @@ class JoystickActivity : AppCompatActivity() {
             if (s.capture) area.releasePointerCapture()
         }
         recording = false
+        counter.text = "Mottatt: $events signaler"
         title.text = "Lagrer …"; info.text = ""
         val name = "CarLink-joystick-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) + ".txt"
         val saved = withContext(Dispatchers.IO) { save(name, log.toString()) }
