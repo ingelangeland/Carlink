@@ -37,33 +37,21 @@ import kotlin.math.min
  *  - øverst: velg om apper åpnes i fullskjerm, høyre tredjedel, delt skjerm eller vindu
  */
 @SuppressLint("ViewConstructor")
-class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
+class AppDrawer(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarget) {
 
 
-    var isOpen = false
-        private set
-
-    private val smoke = View(ctx)
-    private val smokeBg = GradientDrawable().apply { gradientType = GradientDrawable.RADIAL_GRADIENT }
     private val panel = LinearLayout(ctx)
+    override val body: View get() = panel
     private val modeRow = LinearLayout(ctx)
     private val hint = ctx.label("", 12f, 0xCCFFFFFF.toInt()).apply { gravity = Gravity.CENTER }
     private val scroll = android.widget.ScrollView(ctx)
     private val rowsBox = LinearLayout(ctx)
     private var lastCols = -1
     private var apps: List<AppCatalog.App> = emptyList()
-    private var anim: ValueAnimator? = null
-    private var progress = 0f
     private val colW = 112.dp
     private val rowH = 118.dp
 
     init {
-        visibility = INVISIBLE
-        isClickable = true                      // fanger trykk så de ikke går til skjermen bak
-        setOnClickListener { close() }          // trykk utenfor appene lukker
-        smoke.background = smokeBg
-        addView(smoke, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-
         panel.orientation = LinearLayout.VERTICAL
         panel.gravity = Gravity.CENTER_HORIZONTAL
         modeRow.orientation = LinearLayout.HORIZONTAL
@@ -88,88 +76,25 @@ class AppDrawer(ctx: Context, private val blurTarget: View) : ScopedFrame(ctx) {
     }
 
     override fun onStart(scope: CoroutineScope) {
-        scope.launch { Ambient.theme.collect { applyTheme(it) } }
+        super.onStart(scope)
         // Rutenettet bygges på forhånd (skjult), så det er klart når oversikten åpnes
         scope.launch { AppCatalog.apps.collect { apps = it; lastCols = -1; layoutGrid() } }
 
     }
 
-    // ------------------------------------------------------------------ åpne / lukke
-
-    fun open() {
-        if (isOpen) return
-        isOpen = true
-        visibility = VISIBLE
+    override fun onOpening() {
         buildModeRow()
         layoutGrid()
-        Ambient.overlayOpen = true
-        animateTo(1f, 240)
-    }
-
-    fun close(immediate: Boolean = false) {
-        if (!isOpen) return
-        isOpen = false
-        Ambient.overlayOpen = false
-        if (immediate) { anim?.cancel(); setProgress(0f); visibility = INVISIBLE; return }
-        animateTo(0f, 200)
-    }
-
-    private fun animateTo(target: Float, ms: Long) {
-        anim?.cancel()
-        // Appene animeres som ett ferdig bilde (grafikklag) i stedet for å tegnes på nytt hvert bilde
-        panel.setLayerType(LAYER_TYPE_HARDWARE, null)
-        anim = ValueAnimator.ofFloat(progress, target).apply {
-            duration = ms
-            interpolator = DecelerateInterpolator(1.6f)
-            addUpdateListener { setProgress(it.animatedValue as Float) }
-            addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: android.animation.Animator) {
-                    panel.setLayerType(LAYER_TYPE_NONE, null)
-                    if (!isOpen && progress <= 0.001f) visibility = INVISIBLE
-                }
-            })
-            start()
-        }
-    }
-
-    /** p = 0 (skjult) … 1 (helt åpen): uskarphet, røyk og apper følger hverandre. */
-    private var blurStep = -1
-
-    private fun setProgress(p: Float) {
-        progress = p
-        smoke.alpha = p
-        panel.alpha = p
-        val s = 0.94f + 0.06f * p
-        panel.scaleX = s; panel.scaleY = s
-        if (Build.VERSION.SDK_INT >= 31) {
-            // Uskarpheten oppdateres i 5 trinn i stedet for hvert bilde: bakgrunnen står stille mellom
-            // trinnene og trenger ikke regnes ut på nytt → jevn animasjon også på svakere bilskjermer
-            val step = kotlin.math.ceil(p * 5f).toInt().coerceIn(0, 5)
-            if (step != blurStep) {
-                blurStep = step
-                val r = 26f * resources.displayMetrics.density * step / 5f
-                blurTarget.setRenderEffect(if (step == 0) null else RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP))
-            }
-        }
     }
 
     // ------------------------------------------------------------------ utseende
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        smokeBg.gradientRadius = hypot(w.toFloat(), h.toFloat()) / 2f
         post { layoutGrid() }
     }
 
-    private fun applyTheme(t: Ambient.Theme) {
-        val d = Ambient.deep(t.dark)
-        // Nesten klart bak appene, gradvis mørkere mot kanten («røykfarget», ikke svart)
-        smokeBg.setColors(
-            intArrayOf(Ambient.alpha(d, 0x2E), Ambient.alpha(d, 0x38), Ambient.alpha(d, 0x8C), Ambient.alpha(d, 0xC4)),
-            floatArrayOf(0f, 0.38f, 0.72f, 1f),
-        )
-        styleModeRow(t)
-    }
+    override fun onTheme(t: Ambient.Theme) = styleModeRow(t)
 
     /**
      * Appene legges i rader som hver er sentrert (også den siste, ufullstendige raden).

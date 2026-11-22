@@ -13,11 +13,11 @@ import android.widget.FrameLayout
 /**
  * Øverste lag i launcheren. Bytter den lille musepilen ut med en stor, godt synlig prikk
  * (i coverfargen) som vokser litt når den står over noe som kan trykkes.
- * Gjelder joystick/mus i CarLink. Valg: Normal / Stor / Av.
+ * Gjelder joystick/mus i CarLink. Valg: Normal / Stor / Ekstra stor / Av.
  */
 class PointerRoot(ctx: Context) : FrameLayout(ctx) {
 
-    enum class Size(val label: String, val dp: Int) { NORMAL("Normal", 26), LARGE("Stor", 38), OFF("Av", 0) }
+    enum class Size(val label: String, val dp: Int) { NORMAL("Normal", 26), LARGE("Stor", 38), XLARGE("Ekstra stor", 54), OFF("Av", 0) }
 
     companion object {
         fun size(ctx: Context): Size =

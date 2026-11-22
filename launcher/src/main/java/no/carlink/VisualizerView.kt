@@ -68,8 +68,17 @@ class VisualizerView(ctx: Context) : View(ctx) {
         }
     }
 
-    override fun onAttachedToWindow() { super.onAttachedToWindow(); post(frame) }
-    override fun onDetachedFromWindow() { removeCallbacks(frame); super.onDetachedFromWindow() }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); live += this; post(frame) }
+    override fun onDetachedFromWindow() { live -= this; removeCallbacks(frame); super.onDetachedFromWindow() }
+
+    companion object {
+        private val live = mutableSetOf<VisualizerView>()
+        /** Stilen er endret i innstillingene: oppdater lydbølgene som vises. */
+        fun styleChanged(ctx: Context) {
+            val st = runCatching { Style.valueOf(ctx.prefs().getString("vizStyle", "WAVE")!!) }.getOrDefault(Style.WAVE)
+            live.forEach { it.style = st; it.invalidate() }
+        }
+    }
     override fun onSizeChanged(w: Int, hh: Int, ow: Int, oh: Int) { super.onSizeChanged(w, hh, ow, oh); shadersDirty = true }
 
     // ------------------------------------------------------------------ bevegelse

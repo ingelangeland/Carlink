@@ -39,6 +39,7 @@ class ReceiverActivity : AppCompatActivity() {
     private lateinit var split: SplitLayout
     private lateinit var home: HomeView
     private lateinit var drawer: AppDrawer
+    private lateinit var settings: SettingsPanel
     private lateinit var rail: View
     private lateinit var pointerRoot: PointerRoot
     private lateinit var statusDot: View
@@ -121,11 +122,13 @@ class ReceiverActivity : AppCompatActivity() {
         content.addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         drawer = AppDrawer(this, content)
         frame.addView(drawer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        settings = SettingsPanel(this, content, settingsHost)
+        frame.addView(settings, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         setContentView(frame)
 
         // Som hjemmeskjerm skal «tilbake» ikke lukke appen.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { if (drawer.isOpen) drawer.close() }
+            override fun handleOnBackPressed() { if (settings.isOpen) settings.close() else if (drawer.isOpen) drawer.close() }
         })
 
         loadState()
@@ -306,7 +309,7 @@ class ReceiverActivity : AppCompatActivity() {
     /** Hjem-knappen på enheten tar deg alltid tilbake til hjemmeskjermen. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.hasCategory(Intent.CATEGORY_HOME)) { drawer.close(); showHome() }
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) { drawer.close(); settings.close(); showHome() }
         handleIntent(intent)
     }
 
@@ -320,6 +323,7 @@ class ReceiverActivity : AppCompatActivity() {
         val show = i.getStringExtra("show") ?: return
         DemoFeeder.showNav = show == "nav"
         if (show != "drawer" && ::drawer.isInitialized) drawer.close(immediate = true)
+        if (show != "menu" && ::settings.isInitialized) settings.close(immediate = true)
         when (show) {
             "home", "nav" -> showHome()
             "split" -> setLayout(listOf(PaneType.MAP, PaneType.MUSIC, PaneType.APPS))
@@ -328,7 +332,7 @@ class ReceiverActivity : AppCompatActivity() {
             "music" -> setLayout(listOf(PaneType.MUSIC))
             "apps" -> setLayout(listOf(PaneType.APPS))
             "drawer" -> { showHome(); drawer.open() }
-            "menu" -> { showHome(); window.decorView.postDelayed({ showSettings() }, 500) }
+            "menu" -> { showHome(); i.getStringExtra("menupage")?.let { settings.showPage(it) }; settings.open() }
             "joystick" -> startActivity(Intent(this, JoystickActivity::class.java))
         }
     }
@@ -341,93 +345,36 @@ class ReceiverActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------- innstillinger
 
-    private fun showSettings() {
-        val p = prefs()
-        val items: List<Pair<String, () -> Unit>> = listOf(
-            "⚙  Android-innstillinger" to { Launch.start(this, Intent(Settings.ACTION_SETTINGS)) },
-            ("Styr avspilling ved til-/frakobling: " + if (AutoPlay.enabled(this)) "JA" else "NEI") to {
-                p.edit().putBoolean("autoPlay", !AutoPlay.enabled(this)).apply()
-                Toast.makeText(this, if (AutoPlay.enabled(this))
-                    "Musikken starter når telefonen kobles til og pauses når den kobles fra"
-                    else "CarLink styrer ikke avspillingen – hvilemodus tar seg av det", Toast.LENGTH_LONG).show()
-            },
-            "Størrelse på tekst og knapper: ${UiScale.label(this)}" to { chooseUiScale() },
-            "Kart dag/natt: ${DayNight.mode(this).label}" to {
-                val m = DayNight.Mode.entries; DayNight.setMode(this, m[(DayNight.mode(this).ordinal + 1) % m.size])
-                Toast.makeText(this, "Kart: ${DayNight.mode(this).label}" + if (DayNight.mode(this) == DayNight.Mode.AUTO)
-                    " (følger bilens lys hvis den har det, ellers solen)" else "", Toast.LENGTH_LONG).show()
-            },
-            "Prikk for joystick/mus: ${PointerRoot.size(this).label}" to {
-                val s = PointerRoot.Size.entries; PointerRoot.setSize(this, s[(PointerRoot.size(this).ordinal + 1) % s.size])
-                pointerRoot.refresh()
-                Toast.makeText(this, "Prikk: ${PointerRoot.size(this).label}", Toast.LENGTH_SHORT).show()
-            },
-            "Joystick: lær opp (ta opp bevegelsene)" to { startActivity(Intent(this, JoystickActivity::class.java)) },
-            "Lydbuffer: ${p.getInt("audioBufferMs", 600)} ms" to { chooseBuffer() },
-            ("Telefonens GPS i alle apper (også Google Maps): " + if (p.getBoolean("mockGps", false)) "PÅ" else "AV") to { toggleMockGps() },
-            "Start tilkoblingen på nytt" to { LinkService.startReceiver(this, force = true) },
-            "Gjør skjermen synlig for Bluetooth (5 min)" to {
-                Launch.start(this, Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
-                    .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300))
-            },
-            "Bluetooth-innstillinger" to { Launch.start(this, Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) },
-            "Varseltilgang (vis musikk som spilles på skjermen selv)" to { SetupGuide.openNotificationAccess(this) },
-            "Velg CarLink som standard hjemmeskjerm" to { Launch.start(this, Intent(Settings.ACTION_HOME_SETTINGS)) },
-            ("Demomodus (simulert telefon): " + if (DemoFeeder.active) "PÅ" else "AV") to {
-                if (DemoFeeder.active) {
-                    DemoFeeder.stop(); p.edit().putBoolean("demo", false).apply()
-                    LinkService.startReceiver(this, force = true)
-                } else {
-                    LinkService.stop(this); p.edit().putBoolean("demo", true).apply()
-                    DemoFeeder.start(this)
-                }
-            },
-        )
-        AlertDialog.Builder(this)
-            .setTitle(Hub.status.value)
-            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
-            .setNegativeButton("Lukk", null)
-            .show()
+    private fun showSettings() = settings.open()
+
+    private val settingsHost = object : SettingsPanel.Host {
+        override fun restartLink() { LinkService.startReceiver(this@ReceiverActivity, force = true) }
+        override fun makeDefaultHome() {
+            runCatching {
+                val rm = getSystemService(android.app.role.RoleManager::class.java)
+                homeRole.launch(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME))
+            }.onFailure { Launch.start(this@ReceiverActivity, Intent(Settings.ACTION_HOME_SETTINGS)) }
+        }
+        override fun openJoystickTraining() { settings.close(immediate = true); startActivity(Intent(this@ReceiverActivity, JoystickActivity::class.java)) }
+        override fun mockGpsChanged(on: Boolean) { if (on) explainMockGps() }
+        override fun uiScaleChanged() = recreate()
+        override fun demoChanged(on: Boolean) {
+            if (on) { LinkService.stop(this@ReceiverActivity); prefs().edit().putBoolean("demo", true).apply(); DemoFeeder.start(this@ReceiverActivity) }
+            else { DemoFeeder.stop(); prefs().edit().putBoolean("demo", false).apply(); LinkService.startReceiver(this@ReceiverActivity, force = true) }
+        }
+        override fun pointerChanged() = pointerRoot.refresh()
+        override fun openNotificationAccess() = SetupGuide.openNotificationAccess(this@ReceiverActivity)
+        override fun openAndroidSettings() { Launch.start(this@ReceiverActivity, Intent(Settings.ACTION_SETTINGS)) }
+        override fun openBluetoothSettings() { Launch.start(this@ReceiverActivity, Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
+        override fun makeDiscoverable() {
+            Launch.start(this@ReceiverActivity, Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+                .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300))
+        }
     }
 
-    private fun chooseUiScale() {
-        val cur = UiScale.factors.indexOfFirst { it == UiScale.factor(this) }.coerceAtLeast(1)
-        AlertDialog.Builder(this)
-            .setTitle("Størrelse på tekst og knapper")
-            .setSingleChoiceItems(UiScale.labels, cur) { d, which ->
-                prefs().edit().putFloat("uiScale", UiScale.factors[which]).apply()
-                d.dismiss()
-                recreate()
-            }
-            .setNegativeButton("Avbryt", null)
-            .show()
-    }
-
-    /** Større buffer = færre hakk, men lengre tid før pause/neste merkes. */
-    private fun chooseBuffer() {
-        val values = intArrayOf(300, 600, 1000, 1500, 2500)
-        val labels = arrayOf(
-            "300 ms – rask respons, krever stabilt Wi-Fi",
-            "600 ms – anbefalt",
-            "1 s – stabil",
-            "1,5 s – svært stabil",
-            "2,5 s – maks stabilitet",
-        )
-        val cur = values.indexOf(prefs().getInt("audioBufferMs", 600)).coerceAtLeast(0)
-        AlertDialog.Builder(this)
-            .setTitle("Lydbuffer")
-            .setSingleChoiceItems(labels, cur) { d, which ->
-                prefs().edit().putInt("audioBufferMs", values[which]).apply()
-                d.dismiss()
-            }
-            .setNegativeButton("Avbryt", null)
-            .show()
-    }
-
-    private fun toggleMockGps() {
-        val on = !prefs().getBoolean("mockGps", false)
-        prefs().edit().putBoolean("mockGps", on).apply()
-        if (on) {
+    /** Forklarer engangsoppsettet for «telefonens GPS i alle apper». */
+    private fun explainMockGps() {
+        run {
             AlertDialog.Builder(this)
                 .setTitle("Telefonens GPS i alle apper")
                 .setMessage(
