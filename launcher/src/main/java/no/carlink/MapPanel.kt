@@ -31,6 +31,7 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
     private val map = MapView(ctx)
     private val marker = Marker(map)
     private var follow = true
+    private var lastPos: GeoPoint? = null
     private var myLoc: MyLocationNewOverlay? = null
     private val followBtn: android.widget.TextView
     private val navCard: LinearLayout
@@ -138,8 +139,13 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
                 myLoc?.let { it.disableMyLocation(); map.overlays.remove(it); myLoc = null }
                 val gp = GeoPoint(l.lat, l.lon)
                 if (!map.overlays.contains(marker)) map.overlays.add(marker)
+                val rot = if (l.hasBearing) 360f - l.bearing else marker.rotation
+                // Står bilen stille (GPS-støy under 2 m og samme retning): ikke tegn kartet på nytt
+                val last = lastPos
+                if (last != null && last.distanceToAsDouble(gp) < 2.0 && kotlin.math.abs(rot - marker.rotation) < 3f) return@collect
+                lastPos = gp
                 marker.position = gp
-                if (l.hasBearing) marker.rotation = 360f - l.bearing
+                marker.rotation = rot
                 if (follow) map.controller.animateTo(gp)
                 map.invalidate()
             }
