@@ -2,12 +2,19 @@
 # Simulering av CarLink i Android-emulator. Kjøres av GitHub Actions.
 # Lager skjermbilder av alle visninger, måler ytelse og ser etter krasj.
 set -u
+# Alle adb-kall får en tidsgrense, så simuleringen aldri kan henge
+adb() { timeout 120 command adb "$@"; }
+alive() { [ "$(timeout 10 command adb get-state 2>/dev/null)" = "device" ]; }
 OUT=sim
 mkdir -p "$OUT"
 L=no.carlink.launcher/no.carlink.ReceiverActivity
 S=no.carlink.sender/no.carlink.SenderActivity
 
-shot() { sleep "$2"; adb exec-out screencap -p > "$OUT/$1.png"; echo "skjermbilde $1"; }
+shot() {
+  sleep "$2"
+  if ! alive; then echo "EMULATOREN SVARER IKKE (ved $1)" | tee -a "$OUT/EMULATOR.txt"; return; fi
+  adb exec-out screencap -p > "$OUT/$1.png"; echo "skjermbilde $1"
+}
 go()   { adb shell am start -W -n "$L" --ez demo true --es show "$1" > /dev/null; }
 
 adb shell settings put global window_animation_scale 0
@@ -23,7 +30,7 @@ adb shell dumpsys package no.carlink.launcher | grep -m1 versionName
 adb logcat -c
 
 # ---------- 21:9 bilskjerm (2520x1080)
-adb shell wm size 1920x823
+adb shell wm size 1920x824
 adb shell wm density 240
 sleep 3
 go home;  shot 01-hjem-21x9 12

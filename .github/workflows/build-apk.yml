@@ -91,6 +91,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash tools/simulate.sh
 
+      - name: Rydd bort tomme filer
+        if: always()
+        run: find sim -type f -empty -delete 2>/dev/null; ls -la sim || true
+
       - name: Legg ut simuleringsresultat
         if: always()
         uses: softprops/action-gh-release@v2
@@ -103,6 +107,7 @@ jobs:
             sim/*.png
             sim/RAPPORT.txt
             sim/KRASJ.txt
+            sim/EMULATOR.txt
 
       - name: Feil hvis appen krasjet
         run: test ! -f sim/KRASJ.txt
