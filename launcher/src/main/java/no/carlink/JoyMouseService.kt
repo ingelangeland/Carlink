@@ -97,6 +97,7 @@ class JoyMouseService : AccessibilityService() {
     override fun onDestroy() {
         prefs().unregisterOnSharedPreferenceChangeListener(prefListener)
         stop()
+        stopGuard()
         instance = null
         super.onDestroy()
     }
@@ -106,7 +107,37 @@ class JoyMouseService : AccessibilityService() {
     }
     override fun onInterrupt() {}
 
+    // ---- Vakten som stopper bilens system før det åpner seg (se StartGuard)
+    @Volatile private var guard: Process? = null
+    @Volatile private var guardOk = false
+
+    private fun startGuard() {
+        if (guard != null) return
+        val apk = applicationInfo.sourceDir
+        Thread({
+            runCatching {
+                val p = ProcessBuilder("su", "-c", "sh").redirectErrorStream(true).start()
+                guard = p
+                p.outputStream.write("CLASSPATH=$apk exec app_process /system/bin no.carlink.StartGuard\n".toByteArray())
+                p.outputStream.flush()   // holdes åpen: når CarLink stopper, stopper vakten også
+                p.inputStream.bufferedReader().useLines { lines ->
+                    for (l in lines) {
+                        if (l.contains("GUARD-OK")) guardOk = true
+                        if (l.contains("GUARD-FAIL")) guardOk = false
+                    }
+                }
+            }
+            guardOk = false; guard = null
+        }, "carlink-guard").apply { isDaemon = true; start() }
+    }
+
+    private fun stopGuard() {
+        runCatching { guard?.outputStream?.close(); guard?.destroy() }
+        guard = null; guardOk = false
+    }
+
     private fun apply() {
+        if (homeOnly(this)) startGuard() else stopGuard()
         if (wanted(this) || homeOnly(this)) start() else stop()
         if (wanted(this)) addOverlay() else removeOverlay()
         dot?.refresh()
@@ -149,7 +180,7 @@ class JoyMouseService : AccessibilityService() {
 
     /** Bilens system åpnet av scrolleknappen: gå rett tilbake. (Ryggekamera og langt Hjem får være.) */
     private fun carSystemShown() {
-        if (!homeOnly(this)) return
+        if (!homeOnly(this) || guardOk) return   // vakten har allerede stoppet det
         val now = SystemClock.elapsedRealtime()
         if (now < allowCarUntil || now - scrollKeyAt > 2500) return
         performGlobalAction(GLOBAL_ACTION_BACK)
