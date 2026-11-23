@@ -111,14 +111,14 @@ class NowPlayingPanel(ctx: Context) : ScopedFrame(ctx) {
         media = m
         if (m == null) {
             source.text = ""
-            title.text = "Ingen musikk spilles"
-            artist.text = if (Hub.connected.value) "Start musikk på telefonen" else "Koble til telefonen, eller gi varseltilgang for lokal musikk"
+            title.text = "No music playing"
+            artist.text = if (Hub.connected.value) "Start music on the phone" else "Connect the phone, or allow notification access for local music"
             playBtn.setImageResource(android.R.drawable.ic_media_play)
             setArt(null, Int.MIN_VALUE + 1)
             tick(); return
         }
         source.text = src
-        title.text = m.title.ifBlank { "Ukjent tittel" }
+        title.text = m.title.ifBlank { "Unknown title" }
         artist.text = listOf(m.artist, m.album).filter { it.isNotBlank() }.joinToString(" · ")
         playBtn.setImageResource(if (m.playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
         setArt(m.art, m.artId)

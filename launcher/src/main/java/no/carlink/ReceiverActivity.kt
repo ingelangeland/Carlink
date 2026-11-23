@@ -87,6 +87,15 @@ class ReceiverActivity : AppCompatActivity() {
                 while (true) { DayNight.update(this@ReceiverActivity); kotlinx.coroutines.delay(60_000) }
             }
         }
+        // Look for a new version at start and every 6 hours (a notification appears if there is one)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    if (Updater.autoCheck(this@ReceiverActivity)) Updater.check(this@ReceiverActivity, 6 * 3_600_000L, notify = true)
+                    kotlinx.coroutines.delay(6 * 3_600_000L)
+                }
+            }
+        }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
@@ -143,7 +152,7 @@ class ReceiverActivity : AppCompatActivity() {
                 launch {
                     combine(Hub.connected, Hub.status) { c, s -> c to s }.collect { (c, s) ->
                         statusDot.background = rounded(if (c) C.OK else C.WARN, 6)
-                        statusText.text = if (c) "Tilkoblet" else if (s.startsWith("Venter")) "Venter" else "Frakoblet"
+                        statusText.text = if (c) "Connected" else if (s.startsWith("Waiting")) "Waiting" else "Disconnected"
                     }
                 }
             }
@@ -155,15 +164,15 @@ class ReceiverActivity : AppCompatActivity() {
             if (miss.isEmpty()) LinkService.startReceiver(this) else permLauncher.launch(miss.toTypedArray())
         } else DemoFeeder.start(this)
         if (!demo) {
-            guide.add(SetupGuide.Step("home", "CarLink som hjemmeskjerm", null,
+            guide.add(SetupGuide.Step("home", "CarLink as home screen", null,
                 done = { isDefaultHome() },
                 action = {
                     val rm = getSystemService(android.app.role.RoleManager::class.java)
                     homeRole.launch(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME))
                 }))
-            guide.add(SetupGuide.Step("notif", "Vis musikk som spilles på skjermen",
-                "For å vise cover og styre musikk som spilles på skjermen selv (f.eks. Tidal i bilen), trenger CarLink varseltilgang.\n\n" +
-                    "Slå på «CarLink» på neste side.",
+            guide.add(SetupGuide.Step("notif", "Show music playing on the screen",
+                "To show the cover and control music playing on the screen itself (e.g. Tidal in the car), CarLink needs notification access.\n\n" +
+                    "Turn on \"CarLink\" on the next page.",
                 done = { MediaListener.isEnabled(this) },
                 action = { SetupGuide.openNotificationAccess(this) }))
         }
@@ -190,13 +199,13 @@ class ReceiverActivity : AppCompatActivity() {
         rail.addView(statusText)
 
         rail.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
-        rail.addView(railItem(R.drawable.ic_home, "Hjem") { showHome() })
-        rail.addView(railItem(R.drawable.ic_map, "Kart") { setLayout(listOf(PaneType.MAP)) })
-        rail.addView(railItem(R.drawable.ic_music, "Musikk") { setLayout(listOf(PaneType.MUSIC)) })
-        rail.addView(railItem(R.drawable.ic_grid, "Apper") { drawer.open() })
+        rail.addView(railItem(R.drawable.ic_home, "Home") { showHome() })
+        rail.addView(railItem(R.drawable.ic_map, "Map") { setLayout(listOf(PaneType.MAP)) })
+        rail.addView(railItem(R.drawable.ic_music, "Music") { setLayout(listOf(PaneType.MUSIC)) })
+        rail.addView(railItem(R.drawable.ic_grid, "Apps") { drawer.open() })
         rail.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
 
-        rail.addView(label("DELT", 10f, C.SUB, true).apply { gravity = Gravity.CENTER })
+        rail.addView(label("SPLIT", 10f, C.SUB, true).apply { gravity = Gravity.CENTER })
         for (n in 1..3) {
             val b = label("$n", 15f, C.TEXT, true).apply {
                 gravity = Gravity.CENTER
@@ -206,7 +215,7 @@ class ReceiverActivity : AppCompatActivity() {
             rail.addView(b, LinearLayout.LayoutParams(40.dp, 36.dp).apply { topMargin = 6.dp })
         }
         rail.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
-        rail.addView(railItem(R.drawable.ic_tune, "Mer") { showSettings() })
+        rail.addView(railItem(R.drawable.ic_tune, "More") { showSettings() })
         // Kan rulles hvis skjermen er for lav til alt (f.eks. 720 px høyde)
         return ScrollView(this).apply {
             isFillViewport = true
@@ -320,6 +329,9 @@ class ReceiverActivity : AppCompatActivity() {
     private fun handleIntent(i: Intent?) {
         if (i == null) return
         if (i.getBooleanExtra("demo", false)) DemoFeeder.start(this)
+        if (i.getBooleanExtra("carlink_update", false) && ::settings.isInitialized) {
+            settings.showPage("UPDATES"); settings.open(); lifecycleScope.launch { Updater.install(this@ReceiverActivity) }
+        }
         i.getStringExtra("mapmode")?.let { m -> runCatching { DayNight.setMode(this, DayNight.Mode.valueOf(m)) } }
         val show = i.getStringExtra("show") ?: return
         DemoFeeder.showNav = show == "nav"
@@ -372,6 +384,8 @@ class ReceiverActivity : AppCompatActivity() {
         }
         override fun openDeveloperOptions() { Launch.start(this@ReceiverActivity, Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
         override fun isDefaultHome() = this@ReceiverActivity.isDefaultHome()
+        override fun checkUpdates() { lifecycleScope.launch { Updater.check(this@ReceiverActivity) } }
+        override fun installUpdate() { lifecycleScope.launch { Updater.install(this@ReceiverActivity) } }
         override fun makeDiscoverable() {
             Launch.start(this@ReceiverActivity, Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
                 .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300))
@@ -382,13 +396,13 @@ class ReceiverActivity : AppCompatActivity() {
     private fun explainMockGps() {
         run {
             AlertDialog.Builder(this)
-                .setTitle("Telefonens GPS i alle apper")
+                .setTitle("Phone GPS in all apps")
                 .setMessage(
-                    "Én gang: Innstillinger → Om enheten → trykk 7 ganger på «Delversjonsnummer» for å slå på utvikleralternativer. " +
-                        "Gå så til Utvikleralternativer → «Velg app for simulert posisjon» → CarLink.\n\n" +
-                        "Da bruker Google Maps og andre apper på skjermen telefonens posisjon."
+                    "Once: Settings → About device → tap \"Build number\" 7 times to enable developer options. " +
+                        "Then go to Developer options → \"Select mock location app\" → CarLink.\n\n" +
+                        "Google Maps and other apps on the screen then use the phone's location."
                 )
-                .setPositiveButton("Åpne utvikleralternativer") { _, _ ->
+                .setPositiveButton("Open developer options") { _, _ ->
                     Launch.start(this, Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
                 }
                 .setNegativeButton("OK", null)

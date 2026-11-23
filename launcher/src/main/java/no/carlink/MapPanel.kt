@@ -63,7 +63,7 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
 
         // Søkefelt øverst -> åpner Google Maps
         val search = EditText(ctx).apply {
-            hint = "Søk sted i Google Maps …"
+            hint = "Search Google Maps …"
             setHintTextColor(C.SUB); setTextColor(C.TEXT); textSize = 14f
             background = rounded(0xE6171B22.toInt(), 22)
             setPadding(16.dp, 10.dp, 16.dp, 10.dp)
@@ -94,11 +94,11 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
         })
 
         val buttons = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
-        followBtn = ctx.pill("◎ Følger") { setFollow(!follow) }
+        followBtn = ctx.pill("◎ Following") { setFollow(!follow) }
         buttons.addView(followBtn)
-        buttons.addView(ctx.pill("Åpne Maps ⇆", C.ACCENT) { Launch.openMaps(context, null, Launch.Mode.ADJACENT) },
+        buttons.addView(ctx.pill("Open Maps ⇆", C.ACCENT) { Launch.openMaps(context, null, Launch.Mode.ADJACENT) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 8.dp })
-        buttons.addView(ctx.pill("Maps fullskjerm") { Launch.openMaps(context, null, Launch.Mode.FULL) },
+        buttons.addView(ctx.pill("Maps full screen") { Launch.openMaps(context, null, Launch.Mode.FULL) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 8.dp })
         addView(buttons, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 12.dp, 22.dp) })
     }
@@ -106,7 +106,7 @@ class MapPanel(ctx: Context) : ScopedFrame(ctx) {
     private fun setFollow(f: Boolean) {
         if (follow == f) return
         follow = f
-        followBtn.text = if (f) "◎ Følger" else "◎ Følg"
+        followBtn.text = if (f) "◎ Following" else "◎ Follow"
         followBtn.background = rounded(if (f) C.PANEL2 else C.WARN, 22)
         if (f) {
             Hub.remoteLoc.value?.let { map.controller.animateTo(GeoPoint(it.lat, it.lon)) }

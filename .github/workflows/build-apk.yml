@@ -43,6 +43,8 @@ jobs:
           mkdir -p ut
           cp launcher/build/outputs/apk/release/launcher-release.apk ut/CarLink-bilskjerm.apk
           cp sender/build/outputs/apk/release/sender-release.apk ut/CarLink-Sender-telefon.apk
+          # Version info for the built-in updater in both apps
+          echo "{\"versionCode\": ${GITHUB_RUN_NUMBER}, \"versionName\": \"1.0.${GITHUB_RUN_NUMBER}\"}" > ut/version.json
           ls -l ut
 
       - uses: actions/upload-artifact@v4
@@ -54,13 +56,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: siste
-          name: Siste versjon
+          name: Latest version
           prerelease: false
           make_latest: true
-          files: ut/*.apk
+          files: |
+            ut/*.apk
+            ut/version.json
           body: |
-            CarLink-bilskjerm.apk – installeres på skjermen i bilen.
-            CarLink-Sender-telefon.apk – installeres på telefonen.
+            CarLink-bilskjerm.apk – install on the car screen.
+            CarLink-Sender-telefon.apk – install on the phone.
+            Both apps update themselves after this (Settings → Updates).
 
   # Kodekontroll (Android Lint) parallelt, så det ikke forsinker bygg og simulering
   lint:

@@ -24,7 +24,7 @@ class ShareActivity : Activity() {
         val ok = text.isNotBlank() && Hub.send(msg)
         Toast.makeText(
             this,
-            if (ok) "Sendt til bilskjermen" else "Ikke tilkoblet bilen – åpne CarLink Sender og trykk «Koble til»",
+            if (ok) "Sent to the car screen" else "Not connected to the car – open CarLink Sender and tap \"Connect\"",
             Toast.LENGTH_LONG
         ).show()
         finish()

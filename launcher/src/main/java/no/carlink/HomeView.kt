@@ -127,7 +127,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
             })
             addView(accentLine, LinearLayout.LayoutParams(44.dp, 3.dp).apply { topMargin = 8.dp; bottomMargin = 10.dp })
             addView(dateTv.apply {
-                format24Hour = "EEEE d. MMMM"; format12Hour = "EEEE d. MMMM"
+                format24Hour = "EEEE, d MMMM"; format12Hour = "EEEE, d MMMM"
                 setTextColor(0xE6FFFFFF.toInt()); textSize = 16f
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 letterSpacing = 0.03f
@@ -257,15 +257,15 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
             }
         }
         scope.launch {
-            Hub.remoteLoc.collect { l -> speedTv.text = if (l == null) "" else "${(l.speed * 3.6f).roundToInt()} km/t" }
+            Hub.remoteLoc.collect { l -> speedTv.text = if (l == null) "" else "${(l.speed * 3.6f).roundToInt()} km/h" }
         }
         scope.launch {
             combine(Hub.connected, Hub.peerName, Hub.audioStreaming) { c, p, a -> Triple(c, p, a) }.collect { (c, p, a) ->
                 statusDot.background = rounded(if (c) C.OK else C.WARN, 5)
                 statusTv.text = when {
-                    c && a -> "${p.ifBlank { "Telefon" }} · lyd"
-                    c -> p.ifBlank { "Telefon tilkoblet" }
-                    else -> "Venter på telefon"
+                    c && a -> "${p.ifBlank { "Phone" }} · audio"
+                    c -> p.ifBlank { "Phone connected" }
+                    else -> "Waiting for phone"
                 }
             }
         }
@@ -292,13 +292,13 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         playBtn.setImageResource(if (m?.playing == true) R.drawable.ic_pause else R.drawable.ic_play)
         if (m == null) {
             sourceTv.text = ""
-            title.text = "Ingen musikk"
-            artist.text = if (Hub.connected.value) "Start musikk på telefonen" else "Venter på telefonen …"
+            title.text = "No music"
+            artist.text = if (Hub.connected.value) "Start music on the phone" else "Waiting for the phone …"
             cover.setImageResource(R.drawable.ic_music); cover.scaleType = ImageView.ScaleType.CENTER_INSIDE
             return
         }
         sourceTv.text = m.app.uppercase()
-        title.text = m.title.ifBlank { "Ukjent tittel" }
+        title.text = m.title.ifBlank { "Unknown title" }
         artist.text = listOf(m.artist, m.album).filter { it.isNotBlank() }.joinToString(" · ")
         if (m.art != null) { cover.scaleType = ImageView.ScaleType.CENTER_CROP; cover.setImageBitmap(m.art) }
         else { cover.scaleType = ImageView.ScaleType.CENTER_INSIDE; cover.setImageResource(R.drawable.ic_music) }
@@ -315,7 +315,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         }
         favGlass.clear()
         val pills = favs.map { f -> favPill(f.icon, f.label, false, { Launch.app(context, f.cn, Launch.defaultMode(context)) }) { v -> favMenu(v, f.cn) } }.toMutableList()
-        if (favs.size < 6) pills += favPill(context.getDrawable(R.drawable.ic_add), "Legg til", true, { actions.openApps() }, null)
+        if (favs.size < 6) pills += favPill(context.getDrawable(R.drawable.ic_add), "Add", true, { actions.openApps() }, null)
         favPills = pills
         layoutFavGrid()
         applyTheme(Ambient.theme.value)
@@ -395,12 +395,12 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
 
     private fun favMenu(anchor: View, cn: ComponentName) {
         PopupMenu(context, anchor).apply {
-            menu.add(0, 1, 0, "Åpne ved siden av (delt skjerm)")
-            menu.add(0, 2, 1, "Åpne som flytende vindu")
+            menu.add(0, 1, 0, "Open side by side (split screen)")
+            menu.add(0, 2, 1, "Open as floating window")
             val pos = Favorites.position(context, cn)
-            if (pos > 0) menu.add(0, 4, 2, "Flytt frem")
-            if (pos in 0 until Favorites.count(context) - 1) menu.add(0, 5, 3, "Flytt bak")
-            menu.add(0, 3, 4, "Fjern fra Hjem")
+            if (pos > 0) menu.add(0, 4, 2, "Move forward")
+            if (pos in 0 until Favorites.count(context) - 1) menu.add(0, 5, 3, "Move back")
+            menu.add(0, 3, 4, "Remove from Home")
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     1 -> Launch.app(context, cn, Launch.Mode.ADJACENT)

@@ -35,7 +35,7 @@ object Hub {
     /** Neste manøver fra Google Maps-navigasjonen på telefonen. */
     data class NavInfo(val title: String, val text: String, val sub: String, val icon: Bitmap?, val iconId: Int)
 
-    val status = MutableStateFlow("Ikke startet")
+    val status = MutableStateFlow("Not started")
     val connected = MutableStateFlow(false)
     val peerName = MutableStateFlow("")
     /** Sender: lyd strømmes ut. Mottaker: lyd fra telefonen spilles av her. */

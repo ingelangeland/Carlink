@@ -9,5 +9,6 @@ class CarLinkApp : Application() {
         Configuration.getInstance().load(this, prefs())
         Configuration.getInstance().userAgentValue = packageName
         AppCatalog.start(this)
+        Updater.apkName = "CarLink-bilskjerm.apk"
     }
 }

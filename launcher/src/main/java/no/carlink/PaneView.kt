@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 
-enum class PaneType(val label: String) { MAP("Kart"), MUSIC("Musikk"), APPS("Apper") }
+enum class PaneType(val label: String) { MAP("Map"), MUSIC("Music"), APPS("Apps") }
 
 /** Ett panel i delt skjerm: liten velger øverst + innhold. */
 class PaneView(

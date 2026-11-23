@@ -43,9 +43,9 @@ object DemoFeeder {
     private data class Song(val title: String, val artist: String, val album: String, val durationMs: Long)
 
     private val songs = listOf(
-        Song("Nattkjøring", "Nordlys Ekspress", "Fjordlys", 215_000),
-        Song("Havbris", "Kystlinjen", "Saltvann", 188_000),
-        Song("Neonfjell", "Polarnatt", "Midtvinter", 242_000),
+        Song("Night Drive", "Northern Lights Express", "Fjord Light", 215_000),
+        Song("Sea Breeze", "The Coastline", "Salt Water", 188_000),
+        Song("Neon Mountain", "Polar Night", "Midwinter", 242_000),
     )
 
     // En runde gjennom Oslo sentrum (lat, lon)
@@ -68,8 +68,8 @@ object DemoFeeder {
         )
         arrow = turnArrow()
         Hub.demoHandler = { a -> onCommand(a) }
-        Hub.peerName.value = "Demo-telefon"
-        Hub.status.value = "Demomodus – simulert telefon"
+        Hub.peerName.value = "Demo phone"
+        Hub.status.value = "Demo mode – simulated phone"
         Hub.connected.value = true
         Hub.audioStreaming.value = true
         idx = 0; playing = true; posMs = 0; posAt = SystemClock.elapsedRealtime()
@@ -120,10 +120,10 @@ object DemoFeeder {
             // Navigasjon: avstanden telles ned, ny instruksjon når den er nådd
             launch {
                 val steps = listOf(
-                    "Sving til høyre" to "inn på Ringveien",
-                    "Hold til venstre" to "mot E18 Drammen",
-                    "I rundkjøringen, ta 2. avkjørsel" to "Kongsveien",
-                    "Sving til venstre" to "inn på Fjordveien",
+                    "Turn right" to "onto Ringveien",
+                    "Keep left" to "toward E18 Drammen",
+                    "At the roundabout, take the 2nd exit" to "Kongsveien",
+                    "Turn left" to "onto Fjordveien",
                 )
                 var step = 0
                 var dist = 600
@@ -131,7 +131,7 @@ object DemoFeeder {
                 while (isActive) {
                     Hub.remoteNav.value = if (!showNav) null else {
                         val d = if (dist >= 1000) "%.1f km".format(dist / 1000f) else "${(dist / 10) * 10} m"
-                        Hub.NavInfo(d, "${steps[step].first} ${steps[step].second}", "$minutes min · ${minutes * 1} km · ankomst 14:46", arrow, step)
+                        Hub.NavInfo(d, "${steps[step].first} ${steps[step].second}", "$minutes min · ${minutes * 1} km · arrive 14:46", arrow, step)
                     }
                     dist -= 17
                     if (dist <= 0) { step = (step + 1) % steps.size; dist = 400 + step * 250; if (minutes > 1) minutes-- }
@@ -150,7 +150,7 @@ object DemoFeeder {
         Hub.remoteMedia.value = null
         Hub.remoteNav.value = null
         Hub.remoteLoc.value = null
-        Hub.status.value = "Demomodus av"
+        Hub.status.value = "Demo mode off"
     }
 
     private fun currentPos() = if (playing) posMs + (SystemClock.elapsedRealtime() - posAt) else posMs

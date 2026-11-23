@@ -80,12 +80,12 @@ class AppsPanel(ctx: Context) : ScopedFrame(ctx) {
 
     private fun menu(anchor: View, app: AppCatalog.App) {
         PopupMenu(context, anchor).apply {
-            menu.add(0, 1, 0, "Åpne ved siden av (delt skjerm)")
-            menu.add(0, 2, 1, "Åpne som flytende vindu")
-            menu.add(0, 3, 2, "Åpne i fullskjerm")
+            menu.add(0, 1, 0, "Open side by side (split screen)")
+            menu.add(0, 2, 1, "Open as floating window")
+            menu.add(0, 3, 2, "Open full screen")
             menu.add(0, 4, 3, "App-info")
             val fav = Favorites.contains(context, app.component)
-            menu.add(0, 5, 4, if (fav) "Fjern fra Hjem" else "Legg til på Hjem")
+            menu.add(0, 5, 4, if (fav) "Remove from Home" else "Add to Home")
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     1 -> Launch.app(context, app.component, Launch.Mode.ADJACENT)

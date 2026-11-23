@@ -200,7 +200,7 @@ class LinkService : Service() {
                 main.removeCallbacks(stopLater)
                 // Bilen kom tilbake innen 2 min: bare fortsett
                 if (auto && mode == "sender" && job?.isActive == true) {
-                    if (!Hub.connected.value) setStatus("Venter på skjermen …")
+                    if (!Hub.connected.value) setStatus("Waiting for the screen …")
                     return START_STICKY
                 }
                 autoStarted = auto
@@ -214,7 +214,7 @@ class LinkService : Service() {
                 if (autoStarted && triggersUp.isEmpty()) {
                     main.removeCallbacks(stopLater)
                     main.postDelayed(stopLater, STOP_DELAY_MS)
-                    setStatus("Bilen er frakoblet – CarLink stopper om 2 minutter")
+                    setStatus("Car disconnected – CarLink stops in 2 minutes")
                 }
             }
             ACTION_RECEIVER -> {
@@ -247,13 +247,13 @@ class LinkService : Service() {
             .setContentText(text)
             .setOngoing(true)
             .setContentIntent(open)
-            .addAction(0, "Stopp", stop)
+            .addAction(0, "Stop", stop)
             .build()
     }
 
     private fun goForeground(sender: Boolean, audio: Boolean = false): Boolean {
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Tilkobling", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Connection", NotificationManager.IMPORTANCE_LOW))
         var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         if (sender && Perms.has(this, Manifest.permission.ACCESS_FINE_LOCATION)) {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
@@ -271,7 +271,7 @@ class LinkService : Service() {
             }
             true
         } catch (e: Exception) {
-            Hub.status.value = "Mangler tillatelser: ${e.message}"
+            Hub.status.value = "Missing permissions: ${e.message}"
             stopSelf()
             false
         }
@@ -282,14 +282,14 @@ class LinkService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         if (!show || !prefs().getBoolean("audioReminder", false)) { nm.cancel(NOTIF_AUDIO); return }
         runCatching {
-            nm.createNotificationChannel(NotificationChannel("audio", "Lyd til skjermen", NotificationManager.IMPORTANCE_DEFAULT))
+            nm.createNotificationChannel(NotificationChannel("audio", "Audio to screen", NotificationManager.IMPORTANCE_DEFAULT))
             val i = (packageManager.getLaunchIntentForPackage(packageName) ?: return)
                 .putExtra("carlink_audio", true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             val pi = PendingIntent.getActivity(this, 3, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             nm.notify(NOTIF_AUDIO, NotificationCompat.Builder(this, "audio")
                 .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle("CarLink er tilkoblet")
-                .setContentText("Trykk for å strømme lyden over Wi-Fi til skjermen")
+                .setContentTitle("CarLink is connected")
+                .setContentText("Tap to stream audio over Wi-Fi to the screen")
                 .setContentIntent(pi).setAutoCancel(true).build())
         }
     }
@@ -318,7 +318,7 @@ class LinkService : Service() {
         Hub.sender = null
         Hub.connected.value = false
         Hub.remoteMedia.value = null
-        Hub.status.value = "Stoppet"
+        Hub.status.value = "Stopped"
         mode = null
         senderRunning = false
         autoStarted = false
@@ -348,17 +348,17 @@ class LinkService : Service() {
     private suspend fun senderLoop(address: String?, useHotspot: Boolean) = coroutineScope {
         var hs: JSONObject? = null
         if (useHotspot) {
-            setStatus("Starter direkte Wi-Fi …")
-            hs = startHotspot() ?: return@coroutineScope setStatus("Kunne ikke starte direkte Wi-Fi (slå av vanlig hotspot og prøv igjen)")
+            setStatus("Starting direct Wi-Fi …")
+            hs = startHotspot() ?: return@coroutineScope setStatus("Couldn't start direct Wi-Fi (turn off the regular hotspot and try again)")
         }
         val server = try {
             track(ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(Protocol.PORT)) })
         } catch (e: IOException) {
-            return@coroutineScope setStatus("Kunne ikke åpne port ${Protocol.PORT}: ${e.message}")
+            return@coroutineScope setStatus("Couldn't open port ${Protocol.PORT}: ${e.message}")
         }
         val adapter = btAdapter()
         if (address != null && adapter != null) launch { btAnnounceLoop(adapter, address, hs) }
-        else setStatus(if (autoStarted) "Startet automatisk – venter på skjermen over Wi-Fi …" else "Venter på skjermen over Wi-Fi/hotspot …")
+        else setStatus(if (autoStarted) "Started automatically – waiting for the screen over Wi-Fi …" else "Waiting for the screen over Wi-Fi/hotspot …")
 
         server.soTimeout = 2000
         while (isActive) {
@@ -368,8 +368,8 @@ class LinkService : Service() {
                 runSession(sock, isSender = true)
             } catch (e: CancellationException) { throw e } catch (_: Exception) {}
             Hub.connected.value = false
-            if (isActive) setStatus(if (triggersUp.isEmpty() && autoStarted) "Bilen er frakoblet – CarLink stopper om litt"
-                                     else "Frakoblet – venter på skjermen …")
+            if (isActive) setStatus(if (triggersUp.isEmpty() && autoStarted) "Car disconnected – CarLink will stop shortly"
+                                     else "Disconnected – waiting for the screen …")
         }
     }
 
@@ -384,11 +384,11 @@ class LinkService : Service() {
             try {
                 val ips = localIps()
                 if (ips.isEmpty()) {
-                    setStatus("Ingen Wi-Fi-adresse. Slå på hotspot, koble til Wi-Fi, eller bruk «direkte Wi-Fi».")
+                    setStatus("No Wi-Fi address. Turn on the hotspot, connect to Wi-Fi, or use \"direct Wi-Fi\".")
                     delay(5000); continue
                 }
-                if (!adapter.isEnabled) { setStatus("Bluetooth er av – venter på skjermen over Wi-Fi …"); delay(5000); continue }
-                setStatus("Kobler til skjermen …")
+                if (!adapter.isEnabled) { setStatus("Bluetooth is off – waiting for the screen over Wi-Fi …"); delay(5000); continue }
+                setStatus("Connecting to the screen …")
                 val msg = JSONObject().put("t", "wifi").put("ips", JSONArray(ips))
                     .put("port", Protocol.PORT).put("name", Build.MODEL)
                 hs?.let { msg.put("ssid", it.getString("ssid")).put("pass", it.getString("pass")).put("sec", it.optString("sec")) }
@@ -399,11 +399,11 @@ class LinkService : Service() {
                     bt.connect()
                     val w = bt.outputStream.bufferedWriter()
                     w.write(msg.toString()); w.newLine(); w.flush()
-                    setStatus("Venter på at skjermen kobler til over Wi-Fi …")
+                    setStatus("Waiting for the screen to connect over Wi-Fi …")
                     val reply = bt.inputStream.bufferedReader().readLine()?.let { JSONObject(it) }
                     if (reply?.optString("t") == "busy") { delay(5000); continue }
                     if (reply?.optString("t") != "ok") {
-                        throw IOException(reply?.optString("why")?.ifBlank { null } ?: "Skjermen nådde ikke telefonen over Wi-Fi")
+                        throw IOException(reply?.optString("why")?.ifBlank { null } ?: "The screen couldn't reach the phone over Wi-Fi")
                     }
                     Hub.peerName.value = reply.optString("name")
                 } finally { close(bt) }
@@ -415,7 +415,7 @@ class LinkService : Service() {
                 throw e
             } catch (e: Exception) {
                 fails++
-                if (!Hub.connected.value) setStatus("Fant ikke skjermen via Bluetooth – prøver også Wi-Fi …")
+                if (!Hub.connected.value) setStatus("Screen not found via Bluetooth – also trying Wi-Fi …")
             }
             // Prøv sjeldnere når skjermen ikke svarer (sparer strøm)
             delay(if (fails > 3) 15_000L else 3_000L)
@@ -482,7 +482,7 @@ class LinkService : Service() {
         }
         btAdapter()?.let { ad -> launch { btListenLoop(ad, incoming) } }
         launch { wifiProbeLoop(incoming) }
-        setStatus("Venter på telefonen …")
+        setStatus("Waiting for the phone …")
         for ((sock, net) in incoming) {
             try {
                 prefs().edit().putString("lastPhoneIp", sock.inetAddress.hostAddress).apply()
@@ -495,7 +495,7 @@ class LinkService : Service() {
                 if (net != null) releaseWifi()
                 rxBusy.set(false)
             }
-            setStatus("Frakoblet – venter på telefonen …")
+            setStatus("Disconnected – waiting for the phone …")
         }
     }
 
@@ -509,7 +509,7 @@ class LinkService : Service() {
                 close(ss)
                 val reader = bt.inputStream.bufferedReader()
                 val writer = bt.outputStream.bufferedWriter()
-                val msg = JSONObject(reader.readLine() ?: throw IOException("Bluetooth lukket"))
+                val msg = JSONObject(reader.readLine() ?: throw IOException("Bluetooth closed"))
                 if (rxBusy.get()) {
                     writer.write(JSONObject().put("t", "busy").toString()); writer.newLine(); writer.flush()
                     delay(300); close(bt); continue
@@ -518,11 +518,11 @@ class LinkService : Service() {
                 var network: Network? = null
                 val ssid = msg.optString("ssid")
                 if (ssid.isNotEmpty()) {
-                    setStatus("Kobler til Wi-Fi «$ssid» …")
+                    setStatus("Connecting to Wi-Fi \"$ssid\" …")
                     network = connectWifi(ssid, msg.optString("pass"), msg.optString("sec"))
                 }
 
-                setStatus("Kobler til telefonen over Wi-Fi …")
+                setStatus("Connecting to the phone over Wi-Fi …")
                 val ips = msg.getJSONArray("ips")
                 val port = msg.optInt("port", Protocol.PORT)
                 var sock: Socket? = null
@@ -540,11 +540,11 @@ class LinkService : Service() {
                 val claimed = sock != null && rxBusy.compareAndSet(false, true)
                 if (sock != null && !claimed) runCatching { sock.close() }
                 val reply = JSONObject().put("t", if (sock != null) "ok" else "fail").put("name", Build.MODEL)
-                if (sock == null) reply.put("why", "Skjermen fant ikke telefonen på Wi-Fi. Er begge på samme nett?")
+                if (sock == null) reply.put("why", "The screen couldn't find the phone on Wi-Fi. Are both on the same network?")
                 writer.write(reply.toString()); writer.newLine(); writer.flush()
                 delay(300)
                 close(bt)
-                if (sock == null) { setStatus("Fant ikke telefonen på Wi-Fi – er begge på samme nett?"); if (network != null) releaseWifi() }
+                if (sock == null) { setStatus("Phone not found on Wi-Fi – are both on the same network?"); if (network != null) releaseWifi() }
                 else if (claimed) { Hub.peerName.value = msg.optString("name"); incoming.send(sock to network) }
             } catch (e: CancellationException) {
                 throw e
@@ -647,7 +647,7 @@ class LinkService : Service() {
         Hub.sender = { o -> out.trySend(o.toString()) }
         Hub.connected.value = true
         val peer = Hub.peerName.value
-        setStatus(if (isSender) "Tilkoblet skjermen ${peer}" else "Tilkoblet telefonen ${peer}")
+        setStatus(if (isSender) "Connected to screen ${peer}" else "Connected to phone ${peer}")
 
         val writerJob = launch {
             val w = sock.getOutputStream().bufferedWriter()
@@ -695,7 +695,7 @@ class LinkService : Service() {
         when (o.optString("t")) {
             "hello" -> o.optString("name").takeIf { it.isNotBlank() }?.let {
                 Hub.peerName.value = it
-                setStatus(if (isSender) "Tilkoblet skjermen $it" else "Tilkoblet telefonen $it")
+                setStatus(if (isSender) "Connected to screen $it" else "Connected to phone $it")
             }
             "cmd" -> if (isSender) MediaListener.control(o.optString("a"))
             "joylog" -> if (isSender) JoyLog.received(this, o.optString("name", "CarLink-joystick.txt"), o.optString("text"))
@@ -780,14 +780,14 @@ class LinkService : Service() {
      * og sender den som rå PCM over en egen TCP-forbindelse.
      */
     private fun startAudioCapture(code: Int, data: Intent, mute: Boolean) {
-        if (mode != "sender") { Hub.status.value = "Koble til skjermen først"; return }
+        if (mode != "sender") { Hub.status.value = "Connect to the screen first"; return }
         if (!goForeground(true, audio = true)) return
         audioReminder(false)
         stopAudioCapture()
         val mp = try {
             getSystemService(MediaProjectionManager::class.java).getMediaProjection(code, data)
         } catch (e: Exception) { null }
-        if (mp == null) { setStatus("Fikk ikke tilgang til lydopptak"); return }
+        if (mp == null) { setStatus("Audio capture was not allowed"); return }
         mp.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() { main.post { if (projection === mp) stopAudioCapture() } }
         }, main)
@@ -835,7 +835,7 @@ class LinkService : Service() {
                 .setAudioPlaybackCaptureConfig(cfg)
                 .build()
             record = rec
-            if (rec.state != AudioRecord.STATE_INITIALIZED) throw IOException("lydopptak kunne ikke startes")
+            if (rec.state != AudioRecord.STATE_INITIALIZED) throw IOException("audio capture could not start")
 
             val srv = track(ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(Protocol.AUDIO_PORT)); soTimeout = 10_000 })
             server = srv
@@ -850,7 +850,7 @@ class LinkService : Service() {
             if (muteWanted) mutePhone(true)
             rec.startRecording()
             Hub.audioStreaming.value = true
-            setStatus("Tilkoblet · strømmer lyd til skjermen")
+            setStatus("Connected · streaming audio to the screen")
             // Opptak og sending går i hver sin tråd med kø imellom, slik at et kort Wi-Fi-hikk
             // ikke stopper opptaket (som ellers ville gitt hull i lyden).
             val queue = LinkedBlockingDeque<ByteArray>()
@@ -874,19 +874,19 @@ class LinkService : Service() {
                         var got = 0
                         while (got < chunk) {
                             val n = rec.read(buf, got, chunk - got)
-                            if (n < 0) throw IOException("lydopptak feilet ($n)")
+                            if (n < 0) throw IOException("audio capture failed ($n)")
                             got += n
                         }
                         queue.offer(buf)
                         while (queue.size > maxQueued) queue.pollFirst()?.let { pool.offer(it) }
-                        if (!writer.isActive) throw IOException("forbindelsen til skjermen brøt")
+                        if (!writer.isActive) throw IOException("the connection to the screen was lost")
                     }
                 } finally { writer.cancel() }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (Hub.connected.value) setStatus("Lydstrømming stoppet: ${e.message}")
+            if (Hub.connected.value) setStatus("Audio streaming stopped: ${e.message}")
         } finally {
             Hub.audioStreaming.value = false
             mutePhone(false)
@@ -1065,7 +1065,7 @@ class LinkService : Service() {
             lm.setTestProviderLocation(p, loc)
         } catch (e: SecurityException) {
             mockReady = false
-            setStatus("Velg CarLink som app for simulert posisjon i utvikleralternativene")
+            setStatus("Select CarLink as the mock location app in developer options")
         } catch (_: Exception) {}
     }
 

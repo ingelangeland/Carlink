@@ -50,15 +50,17 @@ class SenderActivity : AppCompatActivity() {
     private lateinit var triggerList: LinearLayout
     private lateinit var bgLocBtn: TextView
     private lateinit var joyBtn: TextView
+    private lateinit var updateBtn: TextView
+    private lateinit var versionTv: TextView
     private val bgLocLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { updateBgLoc(); guide.next() }
 
     private val projLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val d = r.data
         if (r.resultCode == RESULT_OK && d != null) LinkService.startAudio(this, r.resultCode, d, muteBox.isChecked)
-        else toast("Lydstrømming avbrutt")
+        else toast("Audio streaming cancelled")
     }
     private val micLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) askProjection() else toast("CarLink trenger tillatelse til lydopptak for å strømme musikken")
+        if (ok) askProjection() else toast("CarLink needs audio capture permission to stream the music")
     }
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { loadDevices(); guide.next() }
@@ -66,6 +68,7 @@ class SenderActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Updater.apkName = "CarLink-Sender-telefon.apk"
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(20.dp, 28.dp, 20.dp, 40.dp) }
         setContentView(ScrollView(this).apply { setBackgroundColor(C.BG); addView(col) })
 
@@ -73,19 +76,24 @@ class SenderActivity : AppCompatActivity() {
         statusTv = label("", 14f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) }
         col.addView(statusTv)
 
-        joyBtn = pill("Del joystick-opptak fra bilen", C.ACCENT) { runCatching { startActivity(JoyLog.shareIntent(this)) } }
+        // Built-in updates: shown only when a new version exists
+        updateBtn = pill("Update CarLink Sender", C.ACCENT) { lifecycleScope.launch { Updater.install(this@SenderActivity) } }
+        updateBtn.visibility = android.view.View.GONE
+        col.addView(updateBtn, wrap(10))
+
+        joyBtn = pill("Share joystick recording from the car", C.ACCENT) { runCatching { startActivity(JoyLog.shareIntent(this)) } }
         col.addView(joyBtn, wrap(10))
 
-        col.section("1 · Tilgang til musikk og navigasjon")
-        notifBtn = pill("Gi tilgang til musikk og navigasjon") { SetupGuide.openNotificationAccess(this) }
+        col.section("1 · Access to music and navigation")
+        notifBtn = pill("Allow access to music and navigation") { SetupGuide.openNotificationAccess(this) }
         col.addView(notifBtn, wrap())
-        batteryBtn = pill("Tillat at CarLink kjører i bakgrunnen") { askBattery() }
+        batteryBtn = pill("Allow CarLink to run in the background") { askBattery() }
         col.addView(batteryBtn, wrap(8))
-        col.addView(label("Samsung: velg også «Ubegrenset» under Innstillinger → Apper → CarLink Sender → Batteri.", 12f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) })
+        col.addView(label("Samsung: also choose \"Unrestricted\" under Settings → Apps → CarLink Sender → Battery.", 12f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) })
 
-        col.section("2 · Automatisk start og stopp")
+        col.section("2 · Automatic start and stop")
         autoBox = CheckBox(this).apply {
-            text = "Start CarLink av seg selv når telefonen kobles til en av enhetene under"
+            text = "Start CarLink automatically when the phone connects to one of the devices below"
             setTextColor(C.TEXT); textSize = 14f
             buttonTintList = ColorStateList.valueOf(C.ACCENT)
             isChecked = prefs().getBoolean("auto", false)
@@ -101,27 +109,27 @@ class SenderActivity : AppCompatActivity() {
         }
         col.addView(triggerList, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 8.dp })
         col.addView(label(
-            "Velg f.eks. bilens eget Bluetooth. Når telefonen kobles til, starter CarLink, og skjermen finner telefonen selv " +
-                "når den er på telefonens hotspot. CarLink stopper 2 minutter etter at Bluetooth er borte.",
+            "Choose e.g. the car's own Bluetooth. When the phone connects, CarLink starts, and the screen finds the phone by itself " +
+                "when it's on the phone's hotspot. CarLink stops 2 minutes after Bluetooth is gone.",
             12f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) })
-        bgLocBtn = pill("Tillat posisjon «hele tiden» (kart når CarLink starter selv)") { askBgLoc() }
+        bgLocBtn = pill("Allow location \"all the time\" (map when CarLink starts by itself)") { askBgLoc() }
         col.addView(bgLocBtn, wrap(8))
         col.addView(CheckBox(this).apply {
-            text = "Spør om lyd over Wi-Fi når CarLink starter av seg selv (varsel)"
+            text = "Ask about audio over Wi-Fi when CarLink starts by itself (notification)"
             setTextColor(C.TEXT); textSize = 13f
             buttonTintList = ColorStateList.valueOf(C.ACCENT)
             isChecked = prefs().getBoolean("audioReminder", false)
             setOnCheckedChangeListener { _, c -> prefs().edit().putBoolean("audioReminder", c).apply() }
         }, wrap(6))
 
-        col.section("3 · Skjermen (valgfritt Bluetooth til skjermen)")
+        col.section("3 · The screen (optional Bluetooth to the screen)")
         spinner = Spinner(this).apply { background = rounded(C.PANEL, 14); setPadding(8.dp, 8.dp, 8.dp, 8.dp) }
         col.addView(spinner, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        col.addView(label("Finner du ikke skjermen? Par enhetene i Bluetooth-innstillingene først.", 12f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) })
-        col.addView(pill("Bluetooth-innstillinger") { startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }, wrap(8))
+        col.addView(label("Can't find the screen? Pair the devices in Bluetooth settings first.", 12f, C.SUB).apply { setPadding(0, 6.dp, 0, 0) })
+        col.addView(pill("Bluetooth settings") { startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }, wrap(8))
 
         hotspot = CheckBox(this).apply {
-            text = "Lag direkte Wi-Fi fra telefonen\n(bruk hvis dere ikke er på samme Wi-Fi/hotspot – skjermen får da ikke internett for kartfliser)"
+            text = "Create direct Wi-Fi from the phone\n(use if you're not on the same Wi-Fi/hotspot – the screen then gets no internet for map tiles)"
             setTextColor(C.TEXT); textSize = 13f
             buttonTintList = ColorStateList.valueOf(C.ACCENT)
             isChecked = prefs().getBoolean("hotspot", false)
@@ -129,24 +137,24 @@ class SenderActivity : AppCompatActivity() {
         col.addView(hotspot, wrap(12))
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(pill("Koble til", C.ACCENT) { connect() })
-        row.addView(pill("Koble fra") { LinkService.stop(this) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { leftMargin = 10.dp })
+        row.addView(pill("Connect", C.ACCENT) { connect() })
+        row.addView(pill("Disconnect") { LinkService.stop(this) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { leftMargin = 10.dp })
         col.addView(row, wrap(12))
 
-        col.section("Lyd over Wi-Fi (valgfritt)")
-        col.addView(label("Musikken spilles av på skjermen i stedet for telefonen. Android spør om lov til lydopptak hver gang.", 12f, C.SUB))
+        col.section("Audio over Wi-Fi (optional)")
+        col.addView(label("Music plays on the screen instead of the phone. Android asks for audio capture permission each time.", 12f, C.SUB))
         muteBox = CheckBox(this).apply {
-            text = "Demp telefonen mens lyden går til skjermen"
+            text = "Mute the phone while audio goes to the screen"
             setTextColor(C.TEXT); textSize = 13f
             buttonTintList = ColorStateList.valueOf(C.ACCENT)
             isChecked = prefs().getBoolean("mute", true)
             setOnCheckedChangeListener { _, c -> prefs().edit().putBoolean("mute", c).apply() }
         }
         col.addView(muteBox, wrap(6))
-        audioBtn = pill("Strøm lyd til skjermen", C.ACCENT) { toggleAudio() }
+        audioBtn = pill("Stream audio to the screen", C.ACCENT) { toggleAudio() }
         col.addView(audioBtn, wrap(6))
 
-        col.section("Spilles nå (deles med skjermen)")
+        col.section("Now playing (shared with the screen)")
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = rounded(C.PANEL, 18); setPadding(12.dp, 12.dp, 12.dp, 12.dp)
@@ -168,23 +176,26 @@ class SenderActivity : AppCompatActivity() {
         card.addView(txt, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         col.addView(card, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
-        col.section("Send rute til skjermen")
+        col.section("Send route to the screen")
         val dest = EditText(this).apply {
-            hint = "Adresse eller sted"; setHintTextColor(C.SUB); setTextColor(C.TEXT)
+            hint = "Address or place"; setHintTextColor(C.SUB); setTextColor(C.TEXT)
             background = rounded(C.PANEL, 14); setPadding(14.dp, 12.dp, 14.dp, 12.dp); isSingleLine = true
         }
         col.addView(dest, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        col.addView(pill("Start navigasjon på skjermen", C.ACCENT) {
+        col.addView(pill("Start navigation on the screen", C.ACCENT) {
             val q = dest.text.toString().trim()
             if (q.isEmpty()) return@pill
-            if (Hub.send(JSONObject().put("t", "nav").put("q", q))) toast("Sendt til skjermen") else toast("Ikke tilkoblet")
+            if (Hub.send(JSONObject().put("t", "nav").put("q", q))) toast("Sent to the screen") else toast("Not connected")
         }, wrap(8))
 
-        col.section("Ruter fra Google Maps")
+        col.section("Routes from Google Maps")
         col.addView(label(
-            "• Start navigasjon i Google Maps på telefonen – neste sving, avstand og ankomsttid vises på bilskjermen.\n" +
-                "• Eller trykk «Del» på et sted eller en rute i Google Maps og velg «Send til bilen».",
+            "• Start navigation in Google Maps on the phone – next turn, distance and arrival time appear on the car screen.\n" +
+                "• Or tap \"Share\" on a place or route in Google Maps and choose \"Send to car\".",
             13f, C.SUB))
+        versionTv = label("", 12f, C.SUB).apply { setPadding(0, 30.dp, 0, 0) }
+        col.addView(versionTv)
+        col.addView(pill("Check for updates") { lifecycleScope.launch { Updater.check(this@SenderActivity) } }, wrap(8))
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -192,8 +203,16 @@ class SenderActivity : AppCompatActivity() {
                 launch { Hub.connected.collect { statusTv.setTextColor(if (it) C.OK else C.SUB) } }
                 launch { Hub.localMedia.collect { renderMedia(it) } }
                 launch {
+                    kotlinx.coroutines.flow.combine(Updater.available, Updater.status) { a, s -> a to s }.collect { (a, s) ->
+                        updateBtn.visibility = if (a != null) android.view.View.VISIBLE else android.view.View.GONE
+                        if (a != null) updateBtn.text = "Update to version ${a.versionName}"
+                        val (code, name) = Updater.currentVersion(this@SenderActivity)
+                        versionTv.text = "CarLink Sender $name (build $code)" + if (s.isNotBlank()) " · $s" else ""
+                    }
+                }
+                launch {
                     Hub.audioStreaming.collect { on ->
-                        audioBtn.text = if (on) "■ Stopp lydstrømming" else "Strøm lyd til skjermen"
+                        audioBtn.text = if (on) "■ Stop audio streaming" else "Stream audio to the screen"
                         audioBtn.background = rounded(if (on) C.WARN else C.ACCENT, 22)
                     }
                 }
@@ -201,35 +220,37 @@ class SenderActivity : AppCompatActivity() {
         }
 
         // Tillatelser spørres én om gangen (Androids egne spørsmål, eller forklaring + «Gå til innstillinger» / «Avbryt»)
-        guide.add(SetupGuide.Step("perms", "Tillatelser", null,
+        guide.add(SetupGuide.Step("perms", "Permissions", null,
             done = { Perms.missing(this, Perms.forRole(true)).isEmpty() },
             action = { permLauncher.launch(Perms.missing(this, Perms.forRole(true)).toTypedArray()) }))
-        guide.add(SetupGuide.Step("notif", "Vis musikk og navigasjon i bilen",
-            "CarLink trenger varseltilgang for å se hvilken musikk som spilles og neste sving fra Google Maps.\n\n" +
-                "Slå på «CarLink Sender» på neste side.",
+        guide.add(SetupGuide.Step("notif", "Show music and navigation in the car",
+            "CarLink needs notification access to see which music is playing and the next turn from Google Maps.\n\n" +
+                "Turn on \"CarLink Sender\" on the next page.",
             done = { MediaListener.isEnabled(this) },
             action = { SetupGuide.openNotificationAccess(this) }))
-        guide.add(SetupGuide.Step("battery", "Kjør i bakgrunnen", null,
+        guide.add(SetupGuide.Step("battery", "Run in the background", null,
             done = { batteryOk() }, action = { askBattery() }))
-        guide.add(SetupGuide.Step("bgloc", "Posisjon når CarLink starter selv",
-            "For at kartet i bilen skal få GPS når CarLink starter automatisk, må posisjon være tillatt hele tiden.\n\n" +
-                "Velg «Tillat hele tiden» på neste side.",
+        guide.add(SetupGuide.Step("bgloc", "Location when CarLink starts by itself",
+            "For the map in the car to get GPS when CarLink starts automatically, location must be allowed all the time.\n\n" +
+                "Choose \"Allow all the time\" on the next page.",
             done = { !autoBox.isChecked || bgLocOk() },
             action = { askBgLoc() }))
         if (intent?.getBooleanExtra("carlink_audio", false) == true) toggleAudio()
+        if (intent?.getBooleanExtra("carlink_update", false) == true) lifecycleScope.launch { Updater.install(this@SenderActivity) }
         if (intent?.getBooleanExtra("autoconnect", false) == true) connect()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra("carlink_audio", false)) toggleAudio()
+        if (intent.getBooleanExtra("carlink_update", false)) lifecycleScope.launch { Updater.install(this@SenderActivity) }
     }
 
     private fun bgLocOk() = Perms.has(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
 
     private fun updateBgLoc() {
         val ok = bgLocOk()
-        bgLocBtn.text = if (ok) "✓ Posisjon tillatt hele tiden" else "Tillat posisjon «hele tiden» (kart når CarLink starter selv)"
+        bgLocBtn.text = if (ok) "✓ Location allowed all the time" else "Allow location \"all the time\" (map when CarLink starts by itself)"
         bgLocBtn.background = rounded(if (ok) C.PANEL2 else if (autoBox.isChecked) C.WARN else C.PANEL2, 22)
     }
 
@@ -245,16 +266,17 @@ class SenderActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         val ok = MediaListener.isEnabled(this)
-        notifBtn.text = if (ok) "✓ Tilgang til musikk og navigasjon gitt" else "Gi tilgang til musikk og navigasjon"
+        notifBtn.text = if (ok) "✓ Access to music and navigation granted" else "Allow access to music and navigation"
         notifBtn.background = rounded(if (ok) C.PANEL2 else C.WARN, 22)
         val bat = batteryOk()
-        batteryBtn.text = if (bat) "✓ Kan kjøre i bakgrunnen" else "Tillat at CarLink kjører i bakgrunnen"
+        batteryBtn.text = if (bat) "✓ Can run in the background" else "Allow CarLink to run in the background"
         batteryBtn.background = rounded(if (bat) C.PANEL2 else C.WARN, 22)
         updateBgLoc()
         joyBtn.visibility = if (JoyLog.exists(this)) android.view.View.VISIBLE else android.view.View.GONE
         loadDevices()
         BtTrigger.checkNow(this)
         guide.next()
+        if (Updater.autoCheck(this)) lifecycleScope.launch { Updater.check(this@SenderActivity, 3 * 3_600_000L, notify = true) }
     }
 
     @SuppressLint("MissingPermission")
@@ -264,7 +286,7 @@ class SenderActivity : AppCompatActivity() {
                 ?.map { (it.name ?: it.address) to it.address }?.sortedBy { it.first } ?: emptyList()
         } catch (_: SecurityException) { emptyList() }
         // Første valg: ingen Bluetooth til skjermen – den finner telefonen via hotspot/Wi-Fi
-        val names = listOf("Ingen – skjermen finner telefonen via hotspot") + devices.map { it.first }
+        val names = listOf("None – the screen finds the phone via hotspot") + devices.map { it.first }
         spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
         val last = prefs().getString("btAddr", null)
         spinner.setSelection(devices.indexOfFirst { it.second == last } + 1)
@@ -278,7 +300,7 @@ class SenderActivity : AppCompatActivity() {
         // Utløsere: flere enheter kan velges
         triggerList.removeAllViews()
         val chosen = BtTrigger.triggers(this).toMutableSet()
-        if (devices.isEmpty()) triggerList.addView(label("Ingen parede Bluetooth-enheter ennå", 13f, C.SUB).apply { setPadding(4.dp, 8.dp, 0, 8.dp) })
+        if (devices.isEmpty()) triggerList.addView(label("No paired Bluetooth devices yet", 13f, C.SUB).apply { setPadding(4.dp, 8.dp, 0, 8.dp) })
         for ((name, addr) in devices) {
             triggerList.addView(CheckBox(this).apply {
                 text = name; setTextColor(C.TEXT); textSize = 14f
@@ -296,7 +318,7 @@ class SenderActivity : AppCompatActivity() {
         val i = spinner.selectedItemPosition - 1   // 0 = ingen Bluetooth til skjermen
         val miss = Perms.missing(this, Perms.forRole(true))
         if (miss.isNotEmpty()) { permLauncher.launch(miss.toTypedArray()); return }
-        if (!MediaListener.isEnabled(this)) toast("Tips: gi varseltilgang for å dele musikk")
+        if (!MediaListener.isEnabled(this)) toast("Tip: allow notification access to share music")
         val addr = devices.getOrNull(i)?.second
         prefs().edit().putString("btAddr", addr ?: "").putBoolean("hotspot", hotspot.isChecked).apply()
         LinkService.startSender(this, addr, hotspot.isChecked)
@@ -318,7 +340,7 @@ class SenderActivity : AppCompatActivity() {
 
     private fun toggleAudio() {
         if (Hub.audioStreaming.value) { LinkService.stopAudio(this); return }
-        if (!Hub.connected.value) { toast("Koble til skjermen først"); return }
+        if (!Hub.connected.value) { toast("Connect to the screen first"); return }
         if (!Perms.has(this, Manifest.permission.RECORD_AUDIO)) { micLauncher.launch(Manifest.permission.RECORD_AUDIO); return }
         askProjection()
     }
@@ -333,10 +355,10 @@ class SenderActivity : AppCompatActivity() {
 
     private fun renderMedia(m: Hub.Media?) {
         if (m == null) {
-            title.text = "Ingenting spilles"; artist.text = ""
+            title.text = "Nothing playing"; artist.text = ""
             cover.setImageDrawable(null); playBtn.setImageResource(android.R.drawable.ic_media_play); return
         }
-        title.text = m.title.ifBlank { "Ukjent tittel" }
+        title.text = m.title.ifBlank { "Unknown title" }
         artist.text = listOf(m.artist, m.app).filter { it.isNotBlank() }.joinToString(" · ")
         cover.setImageBitmap(m.art)
         playBtn.setImageResource(if (m.playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)

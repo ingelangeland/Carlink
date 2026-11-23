@@ -169,10 +169,10 @@ class AppDrawer(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarget) 
         }
         hint.text = when {
             cur == Launch.Mode.RIGHT_THIRD && !Launch.windowsSupported(context) ->
-                "Skjermen har ikke vindusmodus – appen åpnes i delt skjerm. Dra skillelinjen til ⅓."
+                "This screen has no window mode – the app opens in split screen. Drag the divider to ⅓."
             cur == Launch.Mode.WINDOW && !Launch.windowsSupported(context) ->
-                "Skjermen har ikke vindusmodus – appen åpnes i fullskjerm."
-            else -> "Trykk for å åpne · hold inne for flere valg"
+                "This screen has no window mode – the app opens full screen."
+            else -> "Tap to open · hold for more options"
         }
     }
 
@@ -185,9 +185,9 @@ class AppDrawer(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarget) 
 
     private fun appMenu(anchor: View, a: AppCatalog.App) {
         PopupMenu(context, anchor).apply {
-            Launch.Mode.entries.forEachIndexed { i, m -> menu.add(0, i, i, "Åpne: ${m.label}") }
+            Launch.Mode.entries.forEachIndexed { i, m -> menu.add(0, i, i, "Open: ${m.label}") }
             val fav = Favorites.contains(context, a.component)
-            menu.add(0, 100, 100, if (fav) "Fjern fra Hjem" else "Legg til på Hjem")
+            menu.add(0, 100, 100, if (fav) "Remove from Home" else "Add to Home")
             setOnMenuItemClickListener {
                 if (it.itemId == 100) {
                     if (fav) Favorites.remove(context, a.component) else Favorites.add(context, a.component)

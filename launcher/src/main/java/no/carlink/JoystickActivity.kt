@@ -35,16 +35,16 @@ class JoystickActivity : AppCompatActivity() {
     private class Step(val text: String, val seconds: Int, val capture: Boolean = false)
 
     private val steps = listOf(
-        Step("Beveg joysticken rolig rundt i en ring", 8),
-        Step("Skyv joysticken OPP og slipp – noen ganger", 6),
-        Step("Skyv joysticken NED og slipp – noen ganger", 6),
-        Step("Skyv joysticken til VENSTRE og slipp – noen ganger", 6),
-        Step("Skyv joysticken til HØYRE og slipp – noen ganger", 6),
-        Step("Trykk joysticken NED (klikk) og slipp – 3 ganger", 7),
-        Step("Hold joysticken nede og beveg den opp og ned", 8),
-        Step("Bruk RULLEKNAPPEN ved siden av: opp og ned noen ganger", 8),
-        Step("Trykk på de andre knappene ved joysticken, én om gangen (Back, Menu, Map …)", 12),
-        Step("Rå bevegelser: beveg joysticken rundt igjen", 8, capture = true),
+        Step("Move the joystick slowly around in a circle", 8),
+        Step("Push the joystick UP and release – a few times", 6),
+        Step("Push the joystick DOWN and release – a few times", 6),
+        Step("Push the joystick LEFT and release – a few times", 6),
+        Step("Push the joystick RIGHT and release – a few times", 6),
+        Step("Press the joystick DOWN (click) and release – 3 times", 7),
+        Step("Hold the joystick pressed and move it up and down", 8),
+        Step("Use the SCROLL BUTTON next to it: up and down a few times", 8),
+        Step("Press the other buttons by the joystick, one at a time (Back, Menu, Map …)", 12),
+        Step("Raw movement: move the joystick around again", 8, capture = true),
     )
 
     private val log = StringBuilder(64 * 1024)
@@ -72,47 +72,47 @@ class JoystickActivity : AppCompatActivity() {
             setBackgroundColor(C.BG); setPadding(40.dp, 30.dp, 40.dp, 30.dp)
             isFocusable = true; isFocusableInTouchMode = true
         }
-        col.addView(label("Joystick: lær opp", 16f, C.ACCENT, true).apply { gravity = Gravity.CENTER })
+        col.addView(label("Joystick: train", 16f, C.ACCENT, true).apply { gravity = Gravity.CENTER })
         title = label("", 30f, C.TEXT, true).apply { gravity = Gravity.CENTER; setPadding(0, 18.dp, 0, 12.dp) }
         info = label("", 16f, C.SUB).apply { gravity = Gravity.CENTER }
         counter = label("", 14f, C.OK).apply { gravity = Gravity.CENTER; setPadding(0, 20.dp, 0, 0) }
         col.addView(title); col.addView(info); col.addView(counter)
         area = col
         setContentView(col)
-        col.setOnCapturedPointerListener { _, e -> record("RÅ", e); true }
+        col.setOnCapturedPointerListener { _, e -> record("RAW", e); true }
         header()
         lifecycleScope.launch { run() }
     }
 
     private suspend fun run() {
-        title.text = "Gjør deg klar"
-        info.text = "Følg instruksjonene på skjermen. Du trenger ikke trykke på skjermen.\nStarter om 4 sekunder …"
+        title.text = "Get ready"
+        info.text = "Follow the instructions on the screen. No need to touch the screen.\nStarting in 4 seconds …"
         delay(4000)
         recording = true
         for ((i, s) in steps.withIndex()) {
             stepName = "${i + 1}"
-            log.append("\n### Trinn ${i + 1}: ${s.text}\n")
+            log.append("\n### Step ${i + 1}: ${s.text}\n")
             title.text = s.text
             if (s.capture) { area.requestFocus(); area.requestPointerCapture() }
             for (left in s.seconds downTo 1) {
-                info.text = "Trinn ${i + 1} av ${steps.size} · $left s"
+                info.text = "Step ${i + 1} of ${steps.size} · $left s"
                 delay(1000)
             }
             if (s.capture) area.releasePointerCapture()
         }
         recording = false
-        counter.text = "Mottatt: $events signaler"
-        title.text = "Lagrer …"; info.text = ""
+        counter.text = "Received: $events signals"
+        title.text = "Saving …"; info.text = ""
         val name = "CarLink-joystick-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) + ".txt"
         val saved = withContext(Dispatchers.IO) { save(name, log.toString()) }
         val sent = Hub.send(JSONObject().put("t", "joylog").put("name", name).put("text", log.toString()))
-        title.text = "Ferdig!"
+        title.text = "Done!"
         info.text = buildString {
-            append("$events signaler tatt opp.\n\n")
-            if (saved) append("Lagret i Nedlastinger: $name\n")
-            append(if (sent) "Sendt til telefonen – trykk på varselet der for å dele det med Claude."
-                   else "Telefonen er ikke tilkoblet. Koble til og kjør opptaket igjen for å sende det.")
-            append("\n\nGår tilbake om 15 sekunder.")
+            append("$events signals recorded.\n\n")
+            if (saved) append("Saved in Downloads: $name\n")
+            append(if (sent) "Sent to the phone – tap the notification there to share it with Claude."
+                   else "The phone isn't connected. Connect and run the recording again to send it.")
+            append("\n\nReturning in 15 seconds.")
         }
         delay(15_000)
         finish()
@@ -121,26 +121,26 @@ class JoystickActivity : AppCompatActivity() {
     // ---------------------------------------------------------------- opptak
 
     private fun header() {
-        log.append("CarLink joystick-opptak\n")
-        log.append("Enhet: ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
+        log.append("CarLink joystick recording\n")
+        log.append("Device: ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
         val dm = resources.displayMetrics
-        log.append("Skjerm: ${dm.widthPixels}x${dm.heightPixels} @ ${dm.densityDpi} dpi\n\nInndata-enheter:\n")
+        log.append("Screen: ${dm.widthPixels}x${dm.heightPixels} @ ${dm.densityDpi} dpi\n\nInput devices:\n")
         for (id in InputDevice.getDeviceIds()) {
             val d = InputDevice.getDevice(id) ?: continue
-            log.append("- #$id «${d.name}» vendor=${d.vendorId} product=${d.productId} kilder=${sources(d.sources)} ekstern=${d.isExternal}\n")
+            log.append("- #$id \"${d.name}\" vendor=${d.vendorId} product=${d.productId} sources=${sources(d.sources)} external=${d.isExternal}\n")
             d.motionRanges.forEach { r ->
-                log.append("    akse ${MotionEvent.axisToString(r.axis)} ${r.min}..${r.max} kilde=${sources(r.source)}\n")
+                log.append("    axis ${MotionEvent.axisToString(r.axis)} ${r.min}..${r.max} source=${sources(r.source)}\n")
             }
         }
     }
 
     private fun sources(s: Int): String {
         val names = listOf(
-            InputDevice.SOURCE_MOUSE to "MUS", InputDevice.SOURCE_MOUSE_RELATIVE to "MUS_RELATIV",
-            InputDevice.SOURCE_TOUCHPAD to "TOUCHPAD", InputDevice.SOURCE_TOUCHSCREEN to "BERØRING",
+            InputDevice.SOURCE_MOUSE to "MOUSE", InputDevice.SOURCE_MOUSE_RELATIVE to "MOUSE_RELATIVE",
+            InputDevice.SOURCE_TOUCHPAD to "TOUCHPAD", InputDevice.SOURCE_TOUCHSCREEN to "TOUCHSCREEN",
             InputDevice.SOURCE_TRACKBALL to "TRACKBALL", InputDevice.SOURCE_JOYSTICK to "JOYSTICK",
-            InputDevice.SOURCE_GAMEPAD to "GAMEPAD", InputDevice.SOURCE_DPAD to "PILTASTER",
-            InputDevice.SOURCE_KEYBOARD to "TASTATUR", InputDevice.SOURCE_ROTARY_ENCODER to "HJUL",
+            InputDevice.SOURCE_GAMEPAD to "GAMEPAD", InputDevice.SOURCE_DPAD to "DPAD",
+            InputDevice.SOURCE_KEYBOARD to "KEYBOARD", InputDevice.SOURCE_ROTARY_ENCODER to "ROTARY",
         )
         return names.filter { (bit, _) -> s and bit == bit }.joinToString("|") { it.second } + " (0x" + Integer.toHexString(s) + ")"
     }
@@ -151,30 +151,30 @@ class JoystickActivity : AppCompatActivity() {
         if (!recording) return
         events++
         if (lines < 8000) { log.append(line).append('\n'); lines++ }
-        if (events % 5 == 0) counter.text = "Mottatt: $events signaler"
+        if (events % 5 == 0) counter.text = "Received: $events signals"
     }
 
     private fun record(kind: String, e: MotionEvent) {
         val dev = e.device?.name ?: "?"
-        add("${t()} $kind ${MotionEvent.actionToString(e.action)} x=%.1f y=%.1f rx=%.2f ry=%.2f vs=%.2f hs=%.2f knapper=%d kilde=%s enhet=«%s»".format(
+        add("${t()} $kind ${MotionEvent.actionToString(e.action)} x=%.1f y=%.1f rx=%.2f ry=%.2f vs=%.2f hs=%.2f buttons=%d source=%s device=\"%s\"".format(
             Locale.US, e.x, e.y, e.getAxisValue(MotionEvent.AXIS_RELATIVE_X), e.getAxisValue(MotionEvent.AXIS_RELATIVE_Y),
             e.getAxisValue(MotionEvent.AXIS_VSCROLL), e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.buttonState, sources(e.source), dev))
     }
 
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
         if (!recording) return super.dispatchKeyEvent(e)
-        add("${t()} TAST ${if (e.action == KeyEvent.ACTION_DOWN) "NED" else "OPP"} ${KeyEvent.keyCodeToString(e.keyCode)} gjentak=${e.repeatCount} kilde=${sources(e.source)} enhet=«${e.device?.name}»")
+        add("${t()} KEY ${if (e.action == KeyEvent.ACTION_DOWN) "DOWN" else "UP"} ${KeyEvent.keyCodeToString(e.keyCode)} repeat=${e.repeatCount} source=${sources(e.source)} device=\"${e.device?.name}\"")
         return true   // alle taster fanges under opptaket (også Back), så opptaket ikke avbrytes
     }
 
     override fun dispatchTouchEvent(e: MotionEvent): Boolean {
         if (!recording) return super.dispatchTouchEvent(e)
-        record("TRYKK", e); return true
+        record("TOUCH", e); return true
     }
 
     override fun dispatchGenericMotionEvent(e: MotionEvent): Boolean {
         if (!recording) return super.dispatchGenericMotionEvent(e)
-        record("SVEV", e); return true
+        record("HOVER", e); return true
     }
 
     override fun dispatchTrackballEvent(e: MotionEvent): Boolean {

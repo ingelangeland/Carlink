@@ -15,7 +15,7 @@ object Launch {
     const val MAPS = "com.google.android.apps.maps"
 
     /** FULL = hele skjermen, RIGHT_THIRD = vindu i høyre tredjedel, ADJACENT = Androids delte skjerm, WINDOW = flytende vindu. */
-    enum class Mode(val label: String) { FULL("Fullskjerm"), RIGHT_THIRD("Høyre ⅓"), ADJACENT("Delt skjerm"), WINDOW("Vindu") }
+    enum class Mode(val label: String) { FULL("Full screen"), RIGHT_THIRD("Right ⅓"), ADJACENT("Split screen"), WINDOW("Window") }
 
     /** Valgt standard for hvordan apper åpnes (velges øverst i app-oversikten). */
     fun defaultMode(ctx: Context): Mode =
@@ -60,10 +60,10 @@ object Launch {
         ctx.startActivity(i, opts)
         true
     } catch (e: ActivityNotFoundException) {
-        if (!quiet) Toast.makeText(ctx, "Fant ingen app som kan åpne dette", Toast.LENGTH_SHORT).show()
+        if (!quiet) Toast.makeText(ctx, "No app found that can open this", Toast.LENGTH_SHORT).show()
         false
     } catch (e: SecurityException) {
-        if (!quiet) Toast.makeText(ctx, "Ikke tillatt: ${e.message}", Toast.LENGTH_SHORT).show()
+        if (!quiet) Toast.makeText(ctx, "Not allowed: ${e.message}", Toast.LENGTH_SHORT).show()
         false
     }
 

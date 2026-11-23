@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Built-in updates (installs new versions of this app) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -55,7 +58,7 @@
             android:name="no.carlink.ShareActivity"
             android:exported="true"
             android:excludeFromRecents="true"
-            android:label="Send til bilen"
+            android:label="Send to car"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -68,6 +71,8 @@
                 <data android:scheme="geo" />
             </intent-filter>
         </activity>
+
+        <receiver android:name="no.carlink.UpdateReceiver" android:exported="false" />
 
         <service
             android:name="no.carlink.LinkService"
@@ -94,7 +99,7 @@
         <service
             android:name="no.carlink.MediaListener"
             android:exported="true"
-            android:label="CarLink Sender (musikk og navigasjon)"
+            android:label="CarLink Sender (music and navigation)"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

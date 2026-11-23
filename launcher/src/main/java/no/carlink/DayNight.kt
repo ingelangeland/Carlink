@@ -14,7 +14,7 @@ import kotlin.math.sin
  *        frontlysene), ellers solen der du er (regnes ut lokalt, uten internett).
  */
 object DayNight {
-    enum class Mode(val label: String) { AUTO("Auto"), DAY("Dag"), NIGHT("Natt") }
+    enum class Mode(val label: String) { AUTO("Auto"), DAY("Day"), NIGHT("Night") }
 
     val night = MutableStateFlow(true)
     private var systemNight: Boolean? = null

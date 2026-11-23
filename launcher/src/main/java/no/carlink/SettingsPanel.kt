@@ -40,17 +40,19 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         fun openAppPermissions()
         fun openDeveloperOptions()
         fun isDefaultHome(): Boolean
+        fun checkUpdates()
+        fun installUpdate()
     }
 
     private enum class Group(val label: String, val icon: Int) {
-        MUSIC("Musikk", R.drawable.ic_music), MAP("Kart", R.drawable.ic_map),
-        JOYSTICK("Joystick", R.drawable.ic_joystick), SCREEN("Skjerm", R.drawable.ic_screen),
-        LINK("Tilkobling", R.drawable.ic_wifi), ACCESS("Tilganger", R.drawable.ic_lock), ANDROID("Android-innstillinger", R.drawable.ic_settings),
+        MUSIC("Music", R.drawable.ic_music), MAP("Map", R.drawable.ic_map),
+        JOYSTICK("Joystick", R.drawable.ic_joystick), SCREEN("Screen", R.drawable.ic_screen),
+        LINK("Connection", R.drawable.ic_wifi), ACCESS("Permissions", R.drawable.ic_lock), UPDATES("Updates", R.drawable.ic_update), ANDROID("Android settings", R.drawable.ic_settings),
     }
 
     private val box = LinearLayout(ctx)
     override val body: View get() = box
-    private val title = ctx.label("Innstillinger", 24f, C.TEXT, true)
+    private val title = ctx.label("Settings", 24f, C.TEXT, true)
     private val status = ctx.label("", 13f, 0xB3FFFFFF.toInt()).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
     private val groups = LinearLayout(ctx)
     private val page = LinearLayout(ctx)
@@ -88,6 +90,9 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
     override fun onStart(scope: CoroutineScope) {
         super.onStart(scope)
         scope.launch { Hub.status.collect { status.text = it } }
+        // The updates page follows the updater live (checking, downloading, installed …)
+        scope.launch { kotlinx.coroutines.flow.combine(Updater.status, Updater.available) { a, b -> a to b }
+            .collect { if (isOpen && current == Group.UPDATES) build() } }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -115,7 +120,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         pageCard.background = rounded(0x14FFFFFF, 18, 0x29FFFFFF)
         groups.removeAllViews()
         Group.entries.forEachIndexed { i, g -> groups.addView(groupPill(g, g == current, t),
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply { if (i > 0) topMargin = 8.dp }) }
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply { if (i > 0) topMargin = 6.dp }) }
         page.removeAllViews()
         page.addView(context.label(current.label, 18f, C.TEXT, true).apply { setPadding(0, 0, 0, 6.dp) })
         when (current) {
@@ -125,19 +130,20 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             Group.SCREEN -> screen()
             Group.LINK -> link()
             Group.ACCESS -> access()
+            Group.UPDATES -> updates()
             Group.ANDROID -> Unit
         }
     }
 
     private fun music() {
-        toggle("Spill og pause ved til- og frakobling", "Musikken starter der den slapp når telefonen kobles til",
+        toggle("Play and pause on connect and disconnect", "Music resumes where it left off when the phone connects",
             AutoPlay.enabled(context)) { context.prefs().edit().putBoolean("autoPlay", it).apply() }
         val buf = intArrayOf(300, 600, 1000, 1500, 2500)
-        choice("Lydbuffer (lyd over Wi-Fi)", "Større buffer gir færre hakk, men litt tregere respons",
+        choice("Audio buffer (audio over Wi-Fi)", "A larger buffer gives fewer glitches but slightly slower response",
             listOf("0,3 s", "0,6 s", "1 s", "1,5 s", "2,5 s"), buf.indexOf(context.prefs().getInt("audioBufferMs", 600)).coerceAtLeast(0)) {
             context.prefs().edit().putInt("audioBufferMs", buf[it]).apply()
         }
-        choice("Lydbølge", null, listOf("Bølge", "Kapsler"),
+        choice("Sound wave", null, listOf("Wave", "Capsules"),
             if (context.prefs().getString("vizStyle", "WAVE") == "CAPSULES") 1 else 0) {
             context.prefs().edit().putString("vizStyle", if (it == 1) "CAPSULES" else "WAVE").apply()
             VisualizerView.styleChanged(context)
@@ -145,22 +151,22 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
     }
 
     private fun map() {
-        choice("Dag og natt", "Auto følger bilens lys hvis den har det, ellers solen",
+        choice("Day and night", "Auto follows the car's lights if available, otherwise the sun",
             DayNight.Mode.entries.map { it.label }, DayNight.mode(context).ordinal) { DayNight.setMode(context, DayNight.Mode.entries[it]) }
-        toggle("Telefonens GPS i alle apper", "Også Google Maps på skjermen bruker telefonens posisjon",
+        toggle("Phone GPS in all apps", "Google Maps on the screen also uses the phone's location",
             context.prefs().getBoolean("mockGps", false)) { context.prefs().edit().putBoolean("mockGps", it).apply(); host.mockGpsChanged(it) }
     }
 
     private fun joystick() {
-        choice("Prikk som musepeker", "Godt synlig prikk i coverfargen",
+        choice("Dot as mouse pointer", "Highly visible dot in the cover color",
             PointerRoot.Size.entries.map { it.label }, PointerRoot.size(context).ordinal) {
             PointerRoot.setSize(context, PointerRoot.Size.entries[it]); host.pointerChanged()
         }
-        action("Lær opp joysticken", "Tar opp bevegelsene, så styringen kan tilpasses bilen din") { host.openJoystickTraining() }
+        action("Train the joystick", "Records the movements so control can be tuned to your car") { host.openJoystickTraining() }
     }
 
     private fun screen() {
-        choice("Størrelse på tekst og knapper", null, UiScale.labels.toList(),
+        choice("Size of text and buttons", null, UiScale.labels.toList(),
             UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
             context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()
         }
@@ -168,29 +174,40 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
 
     /** Alle tillatelser samlet, med status: hva som er gitt, og ett trykk til riktig sted for det som mangler. */
     private fun access() {
-        fun st(ok: Boolean, missing: String) = if (ok) "✓ Gitt" else missing
-        action("Varseltilgang (musikk og navigasjon)",
-            st(MediaListener.isEnabled(context), "Mangler – trengs for musikk og navigasjon fra Google Maps på skjermen")) { host.openNotificationAccess() }
-        action("CarLink som hjemmeskjerm", st(host.isDefaultHome(), "Ikke valgt – trykk for å velge")) { host.makeDefaultHome() }
-        action("Posisjon og Bluetooth",
-            st(Perms.missing(context, Perms.forRole(false)).isEmpty(), "Mangler – trengs for tilkobling og kart")) { host.openAppPermissions() }
+        fun st(ok: Boolean, missing: String) = if (ok) "✓ Granted" else missing
+        action("Notification access (music and navigation)",
+            st(MediaListener.isEnabled(context), "Missing – needed for music and Google Maps navigation on the screen")) { host.openNotificationAccess() }
+        action("CarLink as home screen", st(host.isDefaultHome(), "Not set – tap to choose")) { host.makeDefaultHome() }
+        action("Location and Bluetooth",
+            st(Perms.missing(context, Perms.forRole(false)).isEmpty(), "Missing – needed for connection and map")) { host.openAppPermissions() }
         val mock = runCatching {
             val ao = context.getSystemService(android.app.AppOpsManager::class.java)
             ao.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_MOCK_LOCATION, android.os.Process.myUid(), context.packageName) ==
                 android.app.AppOpsManager.MODE_ALLOWED
         }.getOrDefault(false)
-        action("Simulert posisjon (telefonens GPS i alle apper)",
-            st(mock, "Ikke valgt – Utvikleralternativer → «Velg app for simulert posisjon» → CarLink")) { host.openDeveloperOptions() }
+        action("Mock location (phone GPS in all apps)",
+            st(mock, "Not set – Developer options → \"Select mock location app\" → CarLink")) { host.openDeveloperOptions() }
+    }
+
+    private fun updates() {
+        val (code, name) = Updater.currentVersion(context)
+        action("Installed version", "$name (build $code)" + (Updater.status.value.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")) { host.checkUpdates() }
+        Updater.available.value?.let { u ->
+            action("Update to version ${u.versionName}", "Downloads and installs the new version") { host.installUpdate() }
+        }
+        action("Check for updates", null) { host.checkUpdates() }
+        toggle("Check automatically", "Looks for a new version when CarLink starts and every 6 hours",
+            Updater.autoCheck(context)) { context.prefs().edit().putBoolean("autoUpdate", it).apply() }
     }
 
     /** Oppdater visningen (f.eks. når du kommer tilbake fra Android-innstillingene). */
     fun refresh() { if (isOpen) build() }
 
     private fun link() {
-        action("Start tilkoblingen på nytt", null) { host.restartLink() }
-        action("Gjør skjermen synlig for Bluetooth", "I 5 minutter, for å pare en ny telefon") { host.makeDiscoverable() }
-        action("Bluetooth-innstillinger", null) { host.openBluetoothSettings() }
-        toggle("Demomodus", "Simulert telefon, for å prøve skjermen uten telefon", DemoFeeder.active) { host.demoChanged(it) }
+        action("Restart the connection", null) { host.restartLink() }
+        action("Make the screen visible for Bluetooth", "For 5 minutes, to pair a new phone") { host.makeDiscoverable() }
+        action("Bluetooth settings", null) { host.openBluetoothSettings() }
+        toggle("Demo mode", "Simulated phone, to try the screen without a phone", DemoFeeder.active) { host.demoChanged(it) }
     }
 
     // ---------------------------------------------------------------- byggeklosser

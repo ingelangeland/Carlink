@@ -22,11 +22,11 @@ object JoyLog {
         val pi = PendingIntent.getActivity(ctx, 5, shareIntent(ctx), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val nm = ctx.getSystemService(NotificationManager::class.java)
         runCatching {
-            nm.createNotificationChannel(NotificationChannel("joy", "Joystick-opptak", NotificationManager.IMPORTANCE_DEFAULT))
+            nm.createNotificationChannel(NotificationChannel("joy", "Joystick recording", NotificationManager.IMPORTANCE_DEFAULT))
             nm.notify(NOTIF, NotificationCompat.Builder(ctx, "joy")
                 .setSmallIcon(android.R.drawable.ic_menu_share)
-                .setContentTitle("Joystick-opptak fra bilen")
-                .setContentText("Trykk for å dele $name")
+                .setContentTitle("Joystick recording from the car")
+                .setContentText("Tap to share $name")
                 .setContentIntent(pi).setAutoCancel(true).build())
         }
     }
@@ -37,9 +37,9 @@ object JoyLog {
         val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", file(ctx))
         val send = Intent(Intent.ACTION_SEND).setType("text/plain")
             .putExtra(Intent.EXTRA_STREAM, uri)
-            .putExtra(Intent.EXTRA_SUBJECT, "CarLink joystick-opptak")
+            .putExtra(Intent.EXTRA_SUBJECT, "CarLink joystick recording")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         send.clipData = ClipData.newRawUri("", uri)
-        return Intent.createChooser(send, "Del joystick-opptaket").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return Intent.createChooser(send, "Share the joystick recording").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 }

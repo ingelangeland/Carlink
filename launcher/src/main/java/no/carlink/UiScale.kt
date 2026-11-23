@@ -14,7 +14,7 @@ import kotlin.math.min
  */
 object UiScale {
     val factors = floatArrayOf(0.85f, 1f, 1.15f, 1.3f)
-    val labels = arrayOf("Liten", "Normal (auto)", "Stor", "Ekstra stor")
+    val labels = arrayOf("Small", "Normal (auto)", "Large", "Extra large")
 
     fun factor(ctx: Context) = ctx.prefs().getFloat("uiScale", 1f)
     fun label(ctx: Context) = labels[factors.indexOfFirst { it == factor(ctx) }.coerceAtLeast(0)]

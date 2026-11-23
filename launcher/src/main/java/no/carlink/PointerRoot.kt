@@ -17,7 +17,7 @@ import android.widget.FrameLayout
  */
 class PointerRoot(ctx: Context) : FrameLayout(ctx) {
 
-    enum class Size(val label: String, val dp: Int) { NORMAL("Normal", 26), LARGE("Stor", 38), XLARGE("Ekstra stor", 54), OFF("Av", 0) }
+    enum class Size(val label: String, val dp: Int) { NORMAL("Normal", 26), LARGE("Large", 38), XLARGE("Extra large", 54), OFF("Off", 0) }
 
     companion object {
         fun size(ctx: Context): Size =

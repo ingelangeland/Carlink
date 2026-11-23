@@ -18,7 +18,7 @@ class SetupGuide(private val act: Activity) {
         val key: String,
         val title: String,
         val text: String?,          // null = vis Androids egen spørsmålsboks direkte
-        val button: String = "Gå til innstillinger",
+        val button: String = "Go to settings",
         val done: () -> Boolean,
         val action: () -> Unit,
     )
@@ -39,7 +39,7 @@ class SetupGuide(private val act: Activity) {
             .setTitle(s.title)
             .setMessage(s.text)
             .setPositiveButton(s.button) { _, _ -> runCatching { s.action() } }
-            .setNegativeButton("Avbryt") { _, _ -> act.window.decorView.post { next() } }
+            .setNegativeButton("Cancel") { _, _ -> act.window.decorView.post { next() } }
             .setCancelable(true)
             .setOnCancelListener { act.window.decorView.post { next() } }
             .show()
