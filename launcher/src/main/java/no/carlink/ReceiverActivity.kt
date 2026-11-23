@@ -430,6 +430,13 @@ class ReceiverActivity : AppCompatActivity() {
     private val settingsHost = object : SettingsPanel.Host {
         override fun restartLink() { LinkService.startReceiver(this@ReceiverActivity, force = true) }
         override fun systemBarsChanged() = applySystemBars()
+        override fun systemReport() {
+            android.widget.Toast.makeText(this@ReceiverActivity, "Making system report …", android.widget.Toast.LENGTH_SHORT).show()
+            lifecycleScope.launch {
+                val msg = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { SystemReport.runAndSend(this@ReceiverActivity) }
+                android.widget.Toast.makeText(this@ReceiverActivity, msg, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
         override fun makeDefaultHome() = requestDefaultHome()
         override fun openJoystickTraining() { settings.close(immediate = true); startActivity(Intent(this@ReceiverActivity, JoystickActivity::class.java)) }
         override fun mockGpsChanged(on: Boolean) { if (on) explainMockGps() }

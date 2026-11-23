@@ -28,6 +28,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
     interface Host {
         fun restartLink()
         fun systemBarsChanged()
+        fun systemReport()
         fun makeDefaultHome()
         fun openJoystickTraining()
         fun mockGpsChanged(on: Boolean)
@@ -174,6 +175,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             choice("Sound volume", null, HoverSound.Level.entries.map { it.label }, HoverSound.level(context).ordinal) { HoverSound.set(context, l = HoverSound.Level.entries[it]) }
         }
         action("Train the joystick", "Records the movements so control can be tuned to your car") { host.openJoystickTraining() }
+        action("System report", "Finds what in the car turns the joystick into jumps – sent to the phone") { host.systemReport() }
     }
 
     private fun screen() {

@@ -25,8 +25,8 @@ object JoyLog {
             if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("joy", "Joystick recording", NotificationManager.IMPORTANCE_DEFAULT))
             nm.notify(NOTIF, NotificationCompat.Builder(ctx, "joy")
                 .setSmallIcon(android.R.drawable.ic_menu_share)
-                .setContentTitle("Joystick recording from the car")
-                .setContentText("Tap to share $name")
+                .setContentTitle("Report from the car")
+                .setContentText("Tap to share $name with Claude")
                 .setContentIntent(pi).setAutoCancel(true).build())
         }
     }
