@@ -480,7 +480,7 @@ class JoyMouseService : AccessibilityService() {
         val pull = if (level == 2) 0.9f else 0.55f
         // Sitter fast på knappen vi allerede er på til du er et stykke utenfor (Sterk)
         snapTarget?.let { t ->
-            val hold = if (level == 2) range * 0.7f else 6f
+            val hold = if (level == 2) range * 0.7f else 14f
             if (dist(t, x, y) <= hold) { pullTo(t, x, y, range, pull); return }
         }
         var best: Rect? = null; var bd = Float.MAX_VALUE
@@ -489,14 +489,21 @@ class JoyMouseService : AccessibilityService() {
             if (d < bd || (d == 0f && bd == 0f && t.width() * t.height() < best!!.width() * best.height())) { bd = d; best = t }
         }
         if (best == null || bd > range) { sx = x; sy = y; snapTarget = null; return }
+        snapTarget?.let { cur -> if (cur != best && dist(cur, x, y) <= bd + 12f) best = cur }
         snapTarget = best
-        pullTo(best, x, y, range, pull)
+        pullTo(best!!, x, y, range, pull)
     }
 
     private fun pullTo(t: Rect, x: Float, y: Float, range: Float, pull: Float) {
-        val k = pull * (1f - (dist(t, x, y) / range).coerceIn(0f, 1f))
-        sx = x + (t.exactCenterX() - x) * k
-        sy = y + (t.exactCenterY() - y) * k
+        val d = dist(t, x, y)
+        var k = pull * (1f - (d / range).coerceIn(0f, 1f))
+        if (d == 0f) k *= 0.6f   // allerede på knappen: bare et mykt drag mot midten
+        // Brede eller høye flater (f.eks. hele rader i en liste) trekker bare på tvers, ellers
+        // ville prikken hoppe mot midten av raden mens du beveger deg bortover den.
+        val kx = if (t.width() <= 220) k else 0f
+        val ky = if (t.height() <= 220) k else 0f
+        sx = x + (t.exactCenterX() - x) * kx
+        sy = y + (t.exactCenterY() - y) * ky
     }
 
     private fun dist(r: Rect, x: Float, y: Float): Float {
