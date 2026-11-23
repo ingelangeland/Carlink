@@ -75,7 +75,6 @@ class JoyMouseService : AccessibilityService() {
 
     // Hover
     private var lastHoverCheck = 0L
-    private val hoverRect = Rect()
     private var hoverKey: String? = null
 
     @Volatile private var readerOn = false
@@ -297,13 +296,16 @@ class JoyMouseService : AccessibilityService() {
     private val frame = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (tx < 0) { animating = false; return }
-            if (cx < 0) { cx = tx; cy = ty }
-            val dx = tx - cx; val dy = ty - cy
+            val now = SystemClock.uptimeMillis()
+            if (now - lastHoverCheck > 300) { lastHoverCheck = now; collectTargets() }
+            // Magnet: målet trekkes mot nærmeste knapp (ikke mens du holder inne og drar)
+            if (!pressed) snap(tx, ty) else { sx = tx; sy = ty; snapTarget = null }
+            if (cx < 0) { cx = sx; cy = sy }
+            val dx = sx - cx; val dy = sy - cy
             cx += dx * 0.45f; cy += dy * 0.45f
             placeDot()
             if (pressed) dragUpdate()
-            val now = SystemClock.uptimeMillis()
-            if (now - lastHoverCheck > 90) { lastHoverCheck = now; hoverCheck() }
+            hoverUpdate()
             if (abs(dx) > 0.5f || abs(dy) > 0.5f) {
                 lastMoveAt = now
                 Choreographer.getInstance().postFrameCallback(this)
@@ -394,39 +396,85 @@ class JoyMouseService : AccessibilityService() {
 
     // ------------------------------------------------------------------ hover (lyd og større prikk)
 
-    private fun hoverCheck() {
-        val x = cx.toInt(); val y = cy.toInt()
-        var found: String? = null
+    /** Knapper på skjermen akkurat nå (hentes ca. 3 ganger i sekundet mens prikken flyttes). */
+    private val targets = ArrayList<Rect>(256)
+    private val covers = ArrayList<Rect>(8)
+    private var sx = -1f
+    private var sy = -1f
+    private var snapTarget: Rect? = null
+
+    private fun collectTargets() {
+        targets.clear(); covers.clear()
         runCatching {
             val ws = windows ?: return@runCatching
             for (w in ws.sortedByDescending { it.layer }) {
-                w.getBoundsInScreen(hoverRect)
-                if (!hoverRect.contains(x, y)) { w.recycle(); continue }
+                // Prikk-laget vårt (og andre overlegg) dekker hele skjermen, men har ingen knapper
+                if (w.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) { w.recycle(); continue }
+                val wb = Rect(); w.getBoundsInScreen(wb)
                 val root = w.root
-                if (root != null) { found = clickableAt(root, x, y); root.recycle() }
+                if (root != null) { collect(root, 0); root.recycle() }
+                covers.add(wb)
                 w.recycle()
-                if (found != null) break
+                if (targets.size > 400) break
             }
         }
-        val hot = found != null
-        if (hot && found != hoverKey) HoverSound.play(this)
-        hoverKey = found
-        dot?.setHot(hot)
     }
 
-    private fun clickableAt(n: AccessibilityNodeInfo, x: Int, y: Int, depth: Int = 0): String? {
-        if (depth > 40) return null
-        n.getBoundsInScreen(hoverRect)
-        if (!hoverRect.contains(x, y) || !n.isVisibleToUser) return null
-        for (i in n.childCount - 1 downTo 0) {
+    private fun collect(n: AccessibilityNodeInfo, depth: Int) {
+        if (depth > 40 || targets.size > 400 || !n.isVisibleToUser) return
+        val r = Rect(); n.getBoundsInScreen(r)
+        if (r.isEmpty) return
+        if ((n.isClickable || n.isLongClickable) &&
+            r.width().toLong() * r.height() < (screenW * screenH / 4).toLong() &&
+            covers.none { it.contains(r.centerX(), r.centerY()) }) targets.add(r)   // ikke skjult av et vindu over
+        for (i in 0 until n.childCount) {
             val c = n.getChild(i) ?: continue
-            val r = clickableAt(c, x, y, depth + 1)
-            c.recycle()
-            if (r != null) return r
+            collect(c, depth + 1); c.recycle()
         }
-        n.getBoundsInScreen(hoverRect)
-        val big = hoverRect.width().toLong() * hoverRect.height() > (screenW * screenH / 4).toLong()
-        return if ((n.isClickable || n.isLongClickable) && !big) hoverRect.flattenToString() else null
+    }
+
+    /** Av / Lett / Sterk – hvor langt unna knappene drar, og hvor hardt. */
+    private fun snap(x: Float, y: Float) {
+        val level = prefs().getInt("joySnap", 1)
+        if (level == 0 || targets.isEmpty()) { sx = x; sy = y; snapTarget = null; return }
+        val range = if (level == 2) 80f else 36f
+        val pull = if (level == 2) 0.9f else 0.55f
+        // Sitter fast på knappen vi allerede er på til du er et stykke utenfor (Sterk)
+        snapTarget?.let { t ->
+            val hold = if (level == 2) range * 0.7f else 6f
+            if (dist(t, x, y) <= hold) { pullTo(t, x, y, range, pull); return }
+        }
+        var best: Rect? = null; var bd = Float.MAX_VALUE
+        for (t in targets) {
+            val d = dist(t, x, y)
+            if (d < bd || (d == 0f && bd == 0f && t.width() * t.height() < best!!.width() * best.height())) { bd = d; best = t }
+        }
+        if (best == null || bd > range) { sx = x; sy = y; snapTarget = null; return }
+        snapTarget = best
+        pullTo(best, x, y, range, pull)
+    }
+
+    private fun pullTo(t: Rect, x: Float, y: Float, range: Float, pull: Float) {
+        val k = pull * (1f - (dist(t, x, y) / range).coerceIn(0f, 1f))
+        sx = x + (t.exactCenterX() - x) * k
+        sy = y + (t.exactCenterY() - y) * k
+    }
+
+    private fun dist(r: Rect, x: Float, y: Float): Float {
+        val dx = maxOf(r.left - x, 0f, x - r.right)
+        val dy = maxOf(r.top - y, 0f, y - r.bottom)
+        return hypot(dx, dy)
+    }
+
+    /** Større prikk og en myk lyd når prikken kommer inn på en knapp. */
+    private fun hoverUpdate() {
+        val x = cx.toInt(); val y = cy.toInt()
+        var found: Rect? = null
+        for (t in targets) if (t.contains(x, y) && (found == null || t.width() * t.height() < found.width() * found.height())) found = t
+        val key = found?.flattenToString()
+        if (key != null && key != hoverKey) HoverSound.play(this)
+        hoverKey = key
+        dot?.setHot(found != null)
     }
 
     // ------------------------------------------------------------------ prikken

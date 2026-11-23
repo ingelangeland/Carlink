@@ -170,6 +170,10 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             context.prefs().edit().putBoolean("carHomeOnly", it).apply()
             if (it) host.joyMouseChanged(context.prefs().getBoolean("joyMouse", false))
         }
+        if (mouse) choice("Snap to buttons", "The dot is pulled towards the nearest thing you can tap",
+            listOf("Off", "Light", "Strong"), context.prefs().getInt("joySnap", 1)) {
+            context.prefs().edit().putInt("joySnap", it).apply()
+        }
         if (mouse) choice("Up and down", "Flip if the dot moves the wrong way vertically",
             listOf("Normal", "Inverted"), if (context.prefs().getBoolean("joyInvertY", false)) 1 else 0) {
             context.prefs().edit().putBoolean("joyInvertY", it == 1).apply()
