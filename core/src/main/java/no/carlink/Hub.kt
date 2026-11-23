@@ -98,7 +98,7 @@ object Hub {
                 val now = r?.playing == true
                 if (now && !was) {
                     remoteActive = true
-                    if (localMedia.value?.playing == true) MediaListener.control("pause")
+                    if (localMedia.value?.playing == true) { MediaListener.control("pause"); AppLog.i("music", "phone started – paused music on the screen") }
                 }
                 was = now
             }
@@ -109,7 +109,7 @@ object Hub {
                 val now = l?.playing == true
                 if (now && !was) {
                     remoteActive = false
-                    if (remoteMedia.value?.playing == true) send(JSONObject().put("t", "cmd").put("a", "pause"))
+                    if (remoteMedia.value?.playing == true) { send(JSONObject().put("t", "cmd").put("a", "pause")); AppLog.i("music", "screen started – paused the phone") }
                 }
                 was = now
             }

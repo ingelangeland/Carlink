@@ -125,7 +125,7 @@ object SystemReport {
         }
     }
 
-    private fun save(ctx: Context, name: String, text: String): Boolean = runCatching {
+    fun save(ctx: Context, name: String, text: String): Boolean = runCatching {
         if (Build.VERSION.SDK_INT < 29) {
             val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             val f = runCatching { File(dir, name).also { it.writeText(text) } }.getOrNull()

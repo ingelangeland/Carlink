@@ -183,6 +183,7 @@ class LinkService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        AppLog.init(this)
         when (intent?.action) {
             ACTION_STOP -> { shutdown(); stopSelf(); return START_NOT_STICKY }
             ACTION_AUDIO_START -> {
@@ -296,6 +297,7 @@ class LinkService : Service() {
     }
 
     private fun setStatus(s: String) {
+        if (Hub.status.value != s) AppLog.i("link", s)
         Hub.status.value = s
         try { getSystemService(NotificationManager::class.java).notify(NOTIF_ID, notification(s)) } catch (_: Exception) {}
     }
@@ -1006,7 +1008,10 @@ class LinkService : Service() {
                     val c = queue.poll(150, TimeUnit.MILLISECONDS)
                     if (c == null) {
                         p.pause(); buffering = true
-                        if (reader.isActive) target.set((target.get() + 10).coerceAtMost(maxTarget))
+                        if (reader.isActive) {
+                            target.set((target.get() + 10).coerceAtMost(maxTarget))
+                            AppLog.i("audio", "buffer ran empty – buffer now ${target.get() * 20} ms")
+                        }
                         continue
                     }
                     p.write(c, 0, c.size)

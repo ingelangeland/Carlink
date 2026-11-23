@@ -29,6 +29,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         fun restartLink()
         fun systemBarsChanged()
         fun systemReport()
+        fun sendLog()
         fun closeSettings()
         fun systemAnimationsChanged(level: Int)
         fun joyMouseChanged(on: Boolean)
@@ -194,6 +195,15 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             choice("Tone", null, HoverSound.Tone.entries.map { it.label }, HoverSound.tone(context).ordinal) { HoverSound.set(context, t = HoverSound.Tone.entries[it]) }
             choice("Sound volume", null, HoverSound.Level.entries.map { it.label }, HoverSound.level(context).ordinal) { HoverSound.set(context, l = HoverSound.Level.entries[it]) }
         }
+        if (mouse) {
+            val learn = JoyMouseService.instance?.learn
+            toggle("Learn from my use", learn?.summary() ?: "Learns your joystick's range, how steady it is and where you miss",
+                context.prefs().getBoolean("joyLearn", true)) { context.prefs().edit().putBoolean("joyLearn", it).apply() }
+            action("Reset what it has learned", null) {
+                JoyMouseService.instance?.learn?.reset()
+                android.widget.Toast.makeText(context, "Learning reset", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
         if (mouse) action("Record mouse log (60 s)", "Use the joystick normally for a minute – the log is sent to the phone for Claude") {
             val svc = JoyMouseService.instance
             if (svc == null) android.widget.Toast.makeText(context, "Joystick as mouse isn't running", android.widget.Toast.LENGTH_LONG).show()
@@ -245,6 +255,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         action("Check for updates", null) { host.checkUpdates() }
         toggle("Check automatically", "Looks for a new version when CarLink starts and every 6 hours",
             Updater.autoCheck(context)) { context.prefs().edit().putBoolean("autoUpdate", it).apply() }
+        action("Send log to Claude", "What CarLink and the system did recently – sent to the phone, share it from there") { host.sendLog() }
     }
 
     /** Oppdater visningen (f.eks. når du kommer tilbake fra Android-innstillingene). */

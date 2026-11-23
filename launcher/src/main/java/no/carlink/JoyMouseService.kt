@@ -47,6 +47,8 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private val main = Handler(Looper.getMainLooper())
+    var learn: JoyLearn? = null; private set
+    @Volatile private var currentPkg: String? = null
     private var wm: WindowManager? = null
     private var overlay: FrameLayout? = null
     private var dot: DotView? = null
@@ -88,6 +90,8 @@ class JoyMouseService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
+        AppLog.init(this); AppLog.i("joystick", "mouse service connected")
+        learn = JoyLearn(this)
         wm = getSystemService(WindowManager::class.java)
         prefs().registerOnSharedPreferenceChangeListener(prefListener)
         apply()
@@ -95,6 +99,7 @@ class JoyMouseService : AccessibilityService() {
 
     override fun onDestroy() {
         prefs().unregisterOnSharedPreferenceChangeListener(prefListener)
+        learn?.save()
         stop()
         stopGuard()
         instance = null
@@ -102,7 +107,11 @@ class JoyMouseService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.packageName == CAR_SYSTEM) carSystemShown()
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString()
+            if (pkg == CAR_SYSTEM) carSystemShown()
+            if (pkg != null && pkg != "com.android.systemui" && pkg != packageName + ".none") currentPkg = pkg
+        }
     }
     override fun onInterrupt() {}
 
@@ -121,8 +130,8 @@ class JoyMouseService : AccessibilityService() {
                 p.outputStream.flush()   // holdes åpen: når CarLink stopper, stopper vakten også
                 p.inputStream.bufferedReader().useLines { lines ->
                     for (l in lines) {
-                        if (l.contains("GUARD-OK")) guardOk = true
-                        if (l.contains("GUARD-FAIL")) guardOk = false
+                        if (l.contains("GUARD-OK")) { guardOk = true; AppLog.i("joystick", "start guard active") }
+                        if (l.contains("GUARD-FAIL")) { guardOk = false; AppLog.i("joystick", "start guard failed: $l") }
                     }
                 }
             }
@@ -179,6 +188,7 @@ class JoyMouseService : AccessibilityService() {
 
     /** Bilens system åpnet av scrolleknappen: gå rett tilbake. (Ryggekamera og langt Hjem får være.) */
     private fun carSystemShown() {
+        AppLog.i("joystick", "car system shown (guard=${guardOk}, recent arrow=${SystemClock.elapsedRealtime() - scrollKeyAt < 2500})")
         if (!homeOnly(this) || guardOk) return   // vakten har allerede stoppet det
         val now = SystemClock.elapsedRealtime()
         if (now < allowCarUntil || now - scrollKeyAt > 2500) return
@@ -288,8 +298,10 @@ class JoyMouseService : AccessibilityService() {
 
     private fun onPosition(x: Int, y: Int) {
         if (logging()) log("CAR pos x=$x y=$y")
-        val nx = axis(x)
-        var ny = axis(y)
+        val l = learn
+        l?.observe(x, y)
+        val nx = l?.mapX(x) ?: axis(x)
+        var ny = l?.mapY(y) ?: axis(y)
         // Bilens y-akse går motsatt vei av skjermen; «Inverted» snur den tilbake
         if (!prefs().getBoolean("joyInvertY", false)) ny = 1f - ny
         tx = nx * (screenW - 1)
@@ -304,7 +316,7 @@ class JoyMouseService : AccessibilityService() {
             if (now - lastHoverCheck > 300) { lastHoverCheck = now; collectTargets() }
             // Trykk: stikka flytter seg litt når den trykkes ned. Prikken holdes i ro der den var
             // like før trykket, helt til du tydelig drar (da blir det rulling).
-            if (pressed && !dragging && hypot(tx - rawPressX, ty - rawPressY) > 70f && Build.VERSION.SDK_INT >= 26) {
+            if (pressed && !dragging && hypot(tx - rawPressX, ty - rawPressY) > (learn?.dragThreshold() ?: 70f) && Build.VERSION.SDK_INT >= 26) {
                 dragging = true; strokeX = downX; strokeY = downY; stroke = null
                 log("DRAG start from %.0f,%.0f".format(downX, downY))
             }
@@ -316,7 +328,8 @@ class JoyMouseService : AccessibilityService() {
             }
             if (cx < 0) { cx = sx; cy = sy }
             val dx = sx - cx; val dy = sy - cy
-            cx += dx * 0.45f; cy += dy * 0.45f
+            val f = learn?.follow() ?: 0.45f
+            cx += dx * f; cy += dy * f
             placeDot()
             record(now)
             if (logging()) log("FRAME raw=%.0f,%.0f target=%.0f,%.0f dot=%.0f,%.0f pressed=%s drag=%s snap=%s".format(
@@ -393,9 +406,33 @@ class JoyMouseService : AccessibilityService() {
             android.widget.Toast.LENGTH_LONG).show()
     }
 
+    private val histRX = FloatArray(32)
+    private val histRY = FloatArray(32)
+
     private fun record(now: Long) {
+        histRX[histI] = tx; histRY[histI] = ty
         histT[histI] = now; histX[histI] = cx; histY[histI] = cy
         histI = (histI + 1) % 32; if (histN < 32) histN++
+    }
+
+    /**
+     * Stedet du siktet på: siste øyeblikk før trykket der stikka sto (nesten) stille.
+     * Finner ingen slikt øyeblikk de siste 0,45 s → posisjonen 0,18 s før.
+     */
+    private fun aimBefore(now: Long): Triple<Float, Float, Float> {
+        var prev = -1
+        for (k in 0 until histN) {
+            val i = (histI - 1 - k + 32) % 32
+            val age = now - histT[i]
+            if (age > 450) break
+            if (age >= 40 && prev >= 0) {
+                val v = hypot(histRX[prev] - histRX[i], histRY[prev] - histRY[i])
+                if (v < 6f) return Triple(histX[i], histY[i], hypot(tx - histRX[i], ty - histRY[i]))
+            }
+            prev = i
+        }
+        val (x, y) = posBefore(now - 180)
+        return Triple(x, y, -1f)
     }
 
     private fun posBefore(t: Long): Pair<Float, Float> {
@@ -416,11 +453,11 @@ class JoyMouseService : AccessibilityService() {
             if (pressed) return
             pressed = true; dragging = false; releasePending = false
             val now = SystemClock.uptimeMillis()
-            val (px, py) = posBefore(now - 180)
+            val (px, py, slipNow) = aimBefore(now)
             downX = px; downY = py; downAt = now
             rawPressX = tx; rawPressY = ty
             cx = px; cy = py; placeDot()
-            log("PRESS uses position from 180ms before: %.0f,%.0f".format(px, py))
+            log("PRESS aims at %.0f,%.0f (slip so far %.0f)".format(px, py, slipNow))
             kick()
             dot?.setPressed(true)
         } else {
@@ -435,13 +472,40 @@ class JoyMouseService : AccessibilityService() {
                 releasePending = true
                 if (!strokeBusy) dragStep(end = true)
             } else {
+                learn?.pressSlip(hypot(tx - rawPressX, ty - rawPressY) + 0f)
                 val held = SystemClock.uptimeMillis() - downAt
                 tap(downX, downY, if (held > 650) 900L else 60L)
             }
         }
     }
 
+    // Bom: nytt klikk like ved innen 1,5 s, eller Tilbake innen 2 s
+    private var lastTapAt = 0L
+    private var lastTapX = 0f
+    private var lastTapY = 0f
+    private var lastTapPkg: String? = null
+    private var lastTapJudged = true
+    private val judgeHit = Runnable { if (!lastTapJudged) { lastTapJudged = true; learn?.tapResult(lastTapPkg, miss = false) } }
+
+    private fun judgeTap(x: Float, y: Float) {
+        val now = SystemClock.uptimeMillis()
+        if (!lastTapJudged && now - lastTapAt < 1500 && hypot(x - lastTapX, y - lastTapY) < 140f) {
+            lastTapJudged = true; learn?.tapResult(lastTapPkg, miss = true); log("LEARN miss in $lastTapPkg")
+        } else if (!lastTapJudged) { lastTapJudged = true; learn?.tapResult(lastTapPkg, miss = false) }
+        main.removeCallbacks(judgeHit)
+        lastTapAt = now; lastTapX = x; lastTapY = y; lastTapPkg = currentPkg; lastTapJudged = false
+        main.postDelayed(judgeHit, 1600)
+    }
+
+    private fun backAfterTap() {
+        if (!lastTapJudged && SystemClock.uptimeMillis() - lastTapAt < 2000) {
+            lastTapJudged = true; main.removeCallbacks(judgeHit); learn?.tapResult(lastTapPkg, miss = true)
+            log("LEARN miss (back) in $lastTapPkg")
+        }
+    }
+
     private fun tap(x: Float, y: Float, duration: Long) {
+        if (duration < 300) judgeTap(x, y)
         log("TAP at %.0f,%.0f duration=%d".format(x, y, duration))
         val p = Path().apply { moveTo(x, y) }
         runCatching {
@@ -522,8 +586,9 @@ class JoyMouseService : AccessibilityService() {
     private fun snap(x: Float, y: Float) {
         val level = prefs().getInt("joySnap", 1)
         if (level == 0 || targets.isEmpty()) { sx = x; sy = y; snapTarget = null; return }
-        val range = if (level == 2) 80f else 36f
-        val pull = if (level == 2) 0.9f else 0.55f
+        val b = learn?.boost(currentPkg) ?: 0f   // lært: sterkere magnet i apper der du bommer
+        val range = (if (level == 2) 80f else 36f) * (1f + b * 1.5f)
+        val pull = ((if (level == 2) 0.9f else 0.55f) + b).coerceAtMost(0.95f)
         // Sitter fast på knappen vi allerede er på til du er et stykke utenfor (Sterk)
         snapTarget?.let { t ->
             val hold = if (level == 2) range * 0.7f else 14f
@@ -636,7 +701,7 @@ class JoyMouseService : AccessibilityService() {
             when (e.keyCode) {
                 KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER,
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> return true
-                KeyEvent.KEYCODE_BACK -> { if (e.action == KeyEvent.ACTION_UP) performGlobalAction(GLOBAL_ACTION_BACK); return true }
+                KeyEvent.KEYCODE_BACK -> { if (e.action == KeyEvent.ACTION_UP) { backAfterTap(); performGlobalAction(GLOBAL_ACTION_BACK) }; return true }
             }
             if (e.keyCode in mediaKeys) {
                 // Rattknappene skal fortsatt styre musikken

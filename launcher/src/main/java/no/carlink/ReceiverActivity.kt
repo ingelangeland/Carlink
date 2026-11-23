@@ -149,6 +149,7 @@ class ReceiverActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLog.init(this)
         DebugFlags.noVisualizer = intent?.getBooleanExtra("noviz", false) == true
         DebugFlags.noArt = intent?.getBooleanExtra("noart", false) == true
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -476,6 +477,13 @@ class ReceiverActivity : AppCompatActivity() {
             }
         }
         override fun closeSettings() { if (::settings.isInitialized) settings.close() }
+        override fun sendLog() {
+            android.widget.Toast.makeText(this@ReceiverActivity, "Collecting log …", android.widget.Toast.LENGTH_SHORT).show()
+            lifecycleScope.launch {
+                val msg = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { LogSender.send(this@ReceiverActivity) }
+                android.widget.Toast.makeText(this@ReceiverActivity, msg, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
         override fun systemReport() {
             android.widget.Toast.makeText(this@ReceiverActivity, "Making system report …", android.widget.Toast.LENGTH_SHORT).show()
             lifecycleScope.launch {

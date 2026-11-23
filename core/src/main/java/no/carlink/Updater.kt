@@ -96,7 +96,7 @@ object Updater {
                     if (total > 0) { val pct = (done * 100 / total).toInt(); if (pct != lastPct && pct % 10 == 0) { lastPct = pct; status.value = "Downloading … $pct %" } }
                 }
             } }
-            status.value = "Installing …"
+            status.value = "Installing …"; AppLog.i("update", "installing ${info.versionName}")
             val pi = ctx.packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
                 setAppPackageName(ctx.packageName)
@@ -111,7 +111,7 @@ object Updater {
             }
             true
         } catch (e: Exception) {
-            status.value = "Update failed: ${e.message ?: e.javaClass.simpleName}"
+            status.value = "Update failed: ${e.message ?: e.javaClass.simpleName}"; AppLog.e("update", "failed", e)
             false
         }
     }

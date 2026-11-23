@@ -68,6 +68,7 @@ class SenderActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLog.init(this)
         Updater.apkName = "CarLink-Sender-telefon.apk"
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(20.dp, 28.dp, 20.dp, 40.dp) }
         setContentView(ScrollView(this).apply { setBackgroundColor(C.BG); addView(col) })
@@ -81,8 +82,11 @@ class SenderActivity : AppCompatActivity() {
         updateBtn.visibility = android.view.View.GONE
         col.addView(updateBtn, wrap(10))
 
-        joyBtn = pill("Share joystick recording from the car", C.ACCENT) { runCatching { startActivity(JoyLog.shareIntent(this)) } }
+        joyBtn = pill("Share the latest report from the car", C.ACCENT) { runCatching { startActivity(JoyLog.shareIntent(this)) } }
         col.addView(joyBtn, wrap(10))
+        col.addView(pill("Share the phone's CarLink log", C.ACCENT) {
+            runCatching { AppLog.saveNow(); JoyLog.received(this, "CarLink-phone-log.txt", AppLog.dump()); startActivity(JoyLog.shareIntent(this)) }
+        }, wrap(10))
 
         col.section("1 · Access to music and navigation")
         notifBtn = pill("Allow access to music and navigation") { SetupGuide.openNotificationAccess(this) }

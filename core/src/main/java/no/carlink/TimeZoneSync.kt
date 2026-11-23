@@ -12,6 +12,7 @@ object TimeZoneSync {
     fun apply(ctx: Context, zone: String) {
         if (!ctx.prefs().getBoolean("tzFromPhone", true)) return
         if (TimeZone.getDefault().id == zone || zone !in TimeZone.getAvailableIDs()) return
+        AppLog.i("time", "setting time zone to $zone (was ${TimeZone.getDefault().id})")
         Thread {
             runCatching {
                 val p = ProcessBuilder("su", "-c", "sh").redirectErrorStream(true).start()
