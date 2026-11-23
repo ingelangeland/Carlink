@@ -231,8 +231,11 @@ class JoyMouseService : AccessibilityService() {
         val b = IntArray(parts.size) { parts[it].toIntOrNull(16) ?: -1 }
         when {
             // Posisjon: 57 12 … byte 8 = 0x10, x i byte 12, y i byte 13
+            // Trykk-melding (byte 8 = 0): ta fokus før bilens Enter kommer
+            b[0] == 0x57 && b.size >= 14 && b[8] == 0 && wanted(this) -> main.post { joyActive() }
             b[0] == 0x57 && b.size >= 14 && b[8] == 0x10 && wanted(this) -> {
                 lastFrameAt = SystemClock.elapsedRealtime()
+                main.post { joyActive() }
                 onPosition(b[12], b[13])
             }
             // Trykk: 22 02 10 01 = ned, 22 02 10 00 = opp
@@ -402,7 +405,7 @@ class JoyMouseService : AccessibilityService() {
         val w = wm ?: return
         val pt = Point(); @Suppress("DEPRECATION") w.defaultDisplay.getRealSize(pt)
         screenW = pt.x.toFloat(); screenH = pt.y.toFloat()
-        val root = FrameLayout(this)
+        val root = KeyEater(this)
         val d = DotView(this)
         root.addView(d, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         d.alpha = 0f
@@ -412,12 +415,51 @@ class JoyMouseService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT)
-        runCatching { w.addView(root, lp); overlay = root; dot = d }
+        runCatching { w.addView(root, lp); overlay = root; dot = d; overlayLp = lp; keyFocus = false }
+    }
+
+    // ---- Bilens Tab/Enter går forbi tilgjengelighetsfilteret, rett til vinduet som har fokus.
+    // Mens joysticken brukes, tar prikk-laget fokus og spiser dem, så appen under ikke hopper.
+    private var overlayLp: WindowManager.LayoutParams? = null
+    private var keyFocus = false
+    private val dropFocus = Runnable { setKeyFocus(false) }
+
+    private fun joyActive() {
+        main.removeCallbacks(dropFocus)
+        if (!keyFocus) setKeyFocus(true)
+        main.postDelayed(dropFocus, 3000)
+    }
+
+    private fun setKeyFocus(on: Boolean) {
+        val o = overlay ?: return; val lp = overlayLp ?: return
+        keyFocus = on
+        lp.flags = if (on) lp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                   else lp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        runCatching { wm?.updateViewLayout(o, lp) }
+        if (on) { o.isFocusableInTouchMode = true; o.requestFocus() }
+    }
+
+    private inner class KeyEater(ctx: Context) : FrameLayout(ctx) {
+        init { isFocusable = true; isFocusableInTouchMode = true }
+        override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+            when (e.keyCode) {
+                KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> return true
+                KeyEvent.KEYCODE_BACK -> { if (e.action == KeyEvent.ACTION_UP) performGlobalAction(GLOBAL_ACTION_BACK); return true }
+            }
+            if (KeyEvent.isMediaSessionKey(e.keyCode)) {
+                // Rattknappene skal fortsatt styre musikken
+                runCatching { getSystemService(android.media.AudioManager::class.java).dispatchMediaKeyEvent(e) }
+                return true
+            }
+            return false
+        }
     }
 
     private fun removeOverlay() {
         overlay?.let { o -> runCatching { wm?.removeView(o) } }
-        overlay = null; dot = null
+        main.removeCallbacks(dropFocus)
+        overlay = null; dot = null; overlayLp = null; keyFocus = false
     }
 
     /** Samme prikk som i CarLink: mørk kant, hvit ring og coverfargen – større over knapper. */
