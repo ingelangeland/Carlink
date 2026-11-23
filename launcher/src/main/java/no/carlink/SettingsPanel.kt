@@ -29,6 +29,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         fun restartLink()
         fun systemBarsChanged()
         fun systemReport()
+        fun joyMouseChanged(on: Boolean)
         fun makeDefaultHome()
         fun openJoystickTraining()
         fun mockGpsChanged(on: Boolean)
@@ -160,7 +161,15 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
     }
 
     private fun joystick() {
-        choice("Joystick steps", "The car sends several signals per push – «One per push» moves one item at a time",
+        val mouse = context.prefs().getBoolean("joyMouse", false)
+        toggle("Joystick as mouse", "A dot follows the Remote Touch in all apps – press to tap, hold and move to scroll", mouse) {
+            host.joyMouseChanged(it)
+        }
+        if (mouse) choice("Up and down", "Flip if the dot moves the wrong way vertically",
+            listOf("Normal", "Inverted"), if (context.prefs().getBoolean("joyInvertY", false)) 1 else 0) {
+            context.prefs().edit().putBoolean("joyInvertY", it == 1).apply()
+        }
+        if (!mouse) choice("Joystick steps", "The car sends several signals per push – «One per push» moves one item at a time",
             listOf("One per push", "Every signal"), if (context.prefs().getBoolean("joyCollapse", true)) 0 else 1) {
             context.prefs().edit().putBoolean("joyCollapse", it == 0).apply()
         }

@@ -430,6 +430,21 @@ class ReceiverActivity : AppCompatActivity() {
     private val settingsHost = object : SettingsPanel.Host {
         override fun restartLink() { LinkService.startReceiver(this@ReceiverActivity, force = true) }
         override fun systemBarsChanged() = applySystemBars()
+        override fun joyMouseChanged(on: Boolean) {
+            prefs().edit().putBoolean("joyMouse", on).apply()
+            if (!on) return
+            if (JoyMouseService.running()) return
+            lifecycleScope.launch {
+                val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    Root.enableAccessibility(JoyMouseService.COMPONENT)
+                }
+                if (!ok) {
+                    android.widget.Toast.makeText(this@ReceiverActivity,
+                        "Couldn't switch it on automatically – turn on «CarLink» under Accessibility", android.widget.Toast.LENGTH_LONG).show()
+                    runCatching { startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                }
+            }
+        }
         override fun systemReport() {
             android.widget.Toast.makeText(this@ReceiverActivity, "Making system report …", android.widget.Toast.LENGTH_SHORT).show()
             lifecycleScope.launch {
