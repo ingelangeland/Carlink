@@ -43,8 +43,6 @@ class JoystickActivity : AppCompatActivity() {
         Step("Push the joystick RIGHT and release – a few times", 6),
         Step("Press the joystick DOWN (click) and release – 3 times", 7),
         Step("Hold the joystick pressed and move it up and down", 8),
-        Step("Use the SCROLL BUTTON next to it: up and down a few times", 8),
-        Step("Press the other buttons by the joystick, one at a time (Back, Menu, Map …)", 12),
         Step("Steering wheel: press NEXT and PREVIOUS song, then PLAY/PAUSE", 10),
         Step("Raw movement: move the joystick around again", 8, capture = true),
     )
