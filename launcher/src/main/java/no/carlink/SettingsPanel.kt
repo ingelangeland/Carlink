@@ -27,6 +27,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
     /** Det menyen trenger fra hjemmeskjermen. */
     interface Host {
         fun restartLink()
+        fun systemBarsChanged()
         fun makeDefaultHome()
         fun openJoystickTraining()
         fun mockGpsChanged(on: Boolean)
@@ -175,6 +176,10 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         choice("Size of text and buttons", null, UiScale.labels.toList(),
             UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
             context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()
+        }
+        choice("Status and navigation bars", "Hidden: swipe in from the edge to show them – they hide again by themselves",
+            listOf("Hide automatically", "Always show"), if (context.prefs().getBoolean("showBars", false)) 1 else 0) {
+            context.prefs().edit().putBoolean("showBars", it == 1).apply(); host.systemBarsChanged()
         }
     }
 

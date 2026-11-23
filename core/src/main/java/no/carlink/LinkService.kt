@@ -46,6 +46,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -664,6 +665,8 @@ class LinkService : Service() {
             out.trySend(JSONObject().put("t", "cfg").put("autoPlay", auto).put("last", last).toString())
             if (auto && last == "car") main.postDelayed({ AutoPlay.resume(this@LinkService) }, 1500)
         }
+        if (!isSender) main.post { MediaKeys.start(this@LinkService) }
+        val keysJob = if (!isSender) launch(Dispatchers.Main) { Hub.remoteMedia.collect { MediaKeys.update(it) } } else null
         if (isSender && autoStarted && projection == null) audioReminder(true)
         val pingJob = launch { while (isActive) { delay(5000); out.trySend("{\"t\":\"ping\"}") } }
         val feedJob = if (isSender) launch(Dispatchers.Main) { senderFeeds() } else null
@@ -687,6 +690,8 @@ class LinkService : Service() {
             val auto = if (isSender) peerAutoPlay else AutoPlay.enabled(this@LinkService)
             if (auto) { main.removeCallbacks(pauseLater); main.postDelayed(pauseLater, 5000) }
             holdLocks(false)
+            keysJob?.cancel()
+            if (!isSender) main.post { MediaKeys.stop() }
             feedJob?.cancel(); pingJob.cancel(); writerJob.cancel()
             out.close()
             close(sock)
@@ -810,12 +815,16 @@ class LinkService : Service() {
 
     private fun startAudioIfReady() {
         if (projection == null || !Hub.connected.value || audioJob?.isActive == true) return
-        if (Build.VERSION.SDK_INT >= 29) audioJob = scope.launch { audioSenderLoop() }
+        if (Build.VERSION.SDK_INT >= 29) {
+            val cap = audioThread("carlink-capture", android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
+            val net = audioThread("carlink-send", android.os.Process.THREAD_PRIORITY_AUDIO)
+            audioJob = scope.launch(cap) { audioSenderLoop(net) }.also { it.invokeOnCompletion { cap.close(); net.close() } }
+        }
     }
 
     @SuppressLint("MissingPermission")
     @androidx.annotation.RequiresApi(29)
-    private suspend fun audioSenderLoop() {
+    private suspend fun audioSenderLoop(netCtx: kotlin.coroutines.CoroutineContext) {
         val mp = projection ?: return
         val rate = Protocol.AUDIO_RATE
         var record: AudioRecord? = null
@@ -862,7 +871,7 @@ class LinkService : Service() {
             // Gjenbruk lydbuffere (unngår 50 nye minneblokker i sekundet og rykk fra søppeltømming)
             val pool = java.util.concurrent.ConcurrentLinkedQueue<ByteArray>()
             coroutineScope {
-                val writer = launch {
+                val writer = launch(netCtx) {
                     try {
                         while (isActive) {
                             val c = queue.poll(200, TimeUnit.MILLISECONDS) ?: continue
@@ -920,7 +929,9 @@ class LinkService : Service() {
         stopAudioPlayback()
         val peer = sessionPeer ?: return
         val net = sessionNetwork
-        audioRxJob = scope.launch {
+        val playCtx = audioThread("carlink-play", android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
+        val netCtx = audioThread("carlink-receive", android.os.Process.THREAD_PRIORITY_AUDIO)
+        audioRxJob = scope.launch(playCtx) {
             var player: AudioTrack? = null
             try {
                 val rate = o.optInt("rate", Protocol.AUDIO_RATE)
@@ -951,20 +962,24 @@ class LinkService : Service() {
                 val input = DataInputStream(BufferedInputStream(s.getInputStream(), 64 * 1024))
                 val chunkBytes = rate * 4 / 50                       // 20 ms per bit
                 val targetMs = prefs().getInt("audioBufferMs", 600)  // justeres under «Mer» på skjermen
-                val target = (targetMs / 20).coerceAtLeast(5)        // antall biter før avspilling starter
-                val maxChunks = target * 3                           // tak, så forsinkelsen ikke vokser
+                // Antall biter før avspilling starter. Går bufferen tom (f.eks. når telefonen er travel),
+                // økes den litt automatisk – opptil 2 s – så det ikke hakker igjen.
+                val target = java.util.concurrent.atomic.AtomicInteger((targetMs / 20).coerceAtLeast(5))
+                val maxTarget = maxOf(100, target.get())
+                val maxChunks = maxTarget * 3                        // tak, så forsinkelsen ikke vokser
                 val queue = LinkedBlockingDeque<ByteArray>()
                 // Gjenbruk av buffere: unngår 50 nye minneblokker i sekundet
                 val pool = java.util.concurrent.ArrayBlockingQueue<ByteArray>(maxChunks + 16)
 
                 // Tråd 1: les fra Wi-Fi inn i bufferen.
-                val reader = launch {
+                val reader = launch(netCtx) {
                     try {
                         while (isActive) {
                             val c = pool.poll() ?: ByteArray(chunkBytes)
                             input.readFully(c)
                             queue.offer(c)
-                            while (queue.size > maxChunks) queue.pollFirst()?.let { pool.offer(it) }
+                            val cap = target.get() * 3
+                            while (queue.size > cap) queue.pollFirst()?.let { pool.offer(it) }
                         }
                     } catch (_: IOException) {} // brudd -> avspillingsløkka avslutter når bufferen er tom
                 }
@@ -975,12 +990,17 @@ class LinkService : Service() {
                 Hub.audioStreaming.value = true
                 while (isActive && (reader.isActive || queue.isNotEmpty())) {
                     if (buffering) {
-                        if (queue.size < target) { delay(20); continue }
+                        if (queue.size < target.get()) { Thread.sleep(20); continue }
                         buffering = false
+                        audioFocus(true)
                         p.play()
                     }
                     val c = queue.poll(150, TimeUnit.MILLISECONDS)
-                    if (c == null) { p.pause(); buffering = true; continue }
+                    if (c == null) {
+                        p.pause(); buffering = true
+                        if (reader.isActive) target.set((target.get() + 10).coerceAtMost(maxTarget))
+                        continue
+                    }
                     p.write(c, 0, c.size)
                     // Enkel bass/diskant-måling til lydbølgene på hjemmeskjermen
                     var sl = 0.0; var sh = 0.0; var i = 0
@@ -1005,10 +1025,45 @@ class LinkService : Service() {
                 Hub.audioStreaming.value = false
                 runCatching { player?.pause(); player?.flush(); player?.stop() }
                 player?.release()
+                audioFocus(false)
                 close(audioRxSock); audioRxSock = null
+            }
+        }.also { it.invokeOnCompletion { playCtx.close(); netCtx.close() } }
+    }
+
+    /** Egen tråd med høy prioritet for lyd, så annen aktivitet på enheten ikke gir hakk. */
+    private fun audioThread(name: String, prio: Int) =
+        java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread({ runCatching { android.os.Process.setThreadPriority(prio) }; r.run() }, name)
+        }.asCoroutineDispatcher()
+
+    @Volatile private var focusReq: Any? = null
+
+    /** Ber om lydfokus mens telefonens musikk spilles på bilskjermen (lokale spillere pauser da). */
+    @Suppress("DEPRECATION")
+    private fun audioFocus(on: Boolean) {
+        val am = getSystemService(AudioManager::class.java) ?: return
+        runCatching {
+            if (on && focusReq == null) {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    val r = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                        .setOnAudioFocusChangeListener { }
+                        .build()
+                    am.requestAudioFocus(r); focusReq = r
+                } else {
+                    am.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN); focusReq = focusListener
+                }
+            } else if (!on && focusReq != null) {
+                val r = focusReq
+                if (Build.VERSION.SDK_INT >= 26 && r is android.media.AudioFocusRequest) am.abandonAudioFocusRequest(r)
+                else am.abandonAudioFocus(focusListener)
+                focusReq = null
             }
         }
     }
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { }
 
     private fun stopAudioPlayback() {
         audioRxJob?.cancel(); audioRxJob = null

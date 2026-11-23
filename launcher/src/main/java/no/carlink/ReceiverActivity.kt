@@ -70,8 +70,49 @@ class ReceiverActivity : AppCompatActivity() {
         Launch.start(this, Intent(Settings.ACTION_HOME_SETTINGS))
     }
 
+    private val rehideBars = Runnable { applySystemBars() }
+
+    /** Skjuler status- og navigasjonslinja (valg under Settings → Screen). */
+    @Suppress("DEPRECATION")
+    private fun applySystemBars() {
+        val show = prefs().getBoolean("showBars", false)
+        val c = WindowInsetsControllerCompat(window, window.decorView)
+        if (show) {
+            c.show(WindowInsetsCompat.Type.systemBars())
+            if (android.os.Build.VERSION.SDK_INT < 30) window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            return
+        }
+        c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        c.hide(WindowInsetsCompat.Type.systemBars())
+        if (android.os.Build.VERSION.SDK_INT < 30) {
+            // Eldre Android (bilskjermen kjører 9): de klassiske flaggene er mest pålitelige
+            window.decorView.systemUiVisibility = (android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applySystemBars()
+    }
+
+    /** Rattknappene (neste/forrige/play/pause) – går til telefonen når den spiller, ellers lokalt. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val a = MediaKeys.actionFor(event.keyCode)
+        if (a != null) {
+            if (event.action == android.view.KeyEvent.ACTION_UP) Hub.mediaCommand(a)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onResume() {
         super.onResume()
+        applySystemBars()
         // Neste manglende tillatelse (etter at Androids egne spørsmål er besvart)
         if (Perms.missing(this, Perms.forRole(false)).isEmpty()) guide.next()
         if (::settings.isInitialized) settings.refresh()   // status for tilganger oppdateres når du kommer tilbake
@@ -109,9 +150,14 @@ class ReceiverActivity : AppCompatActivity() {
             }
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).apply {
-            hide(WindowInsetsCompat.Type.systemBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        applySystemBars()
+        // Kommer linjene fram (sveip, dialog, annen app), skjules de igjen etter noen sekunder
+        @Suppress("DEPRECATION")
+        window.decorView.setOnSystemUiVisibilityChangeListener { vis ->
+            if (vis and android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION == 0) {
+                window.decorView.removeCallbacks(rehideBars)
+                window.decorView.postDelayed(rehideBars, 3000)
+            }
         }
 
         // Lag 1: albumcoveret over hele skjermen. Lag 2: meny + innhold (hjem eller delt skjerm).
@@ -371,6 +417,7 @@ class ReceiverActivity : AppCompatActivity() {
 
     private val settingsHost = object : SettingsPanel.Host {
         override fun restartLink() { LinkService.startReceiver(this@ReceiverActivity, force = true) }
+        override fun systemBarsChanged() = applySystemBars()
         override fun makeDefaultHome() = requestDefaultHome()
         override fun openJoystickTraining() { settings.close(immediate = true); startActivity(Intent(this@ReceiverActivity, JoystickActivity::class.java)) }
         override fun mockGpsChanged(on: Boolean) { if (on) explainMockGps() }
