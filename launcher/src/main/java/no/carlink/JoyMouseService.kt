@@ -83,7 +83,7 @@ class JoyMouseService : AccessibilityService() {
     @Volatile private var proc: Process? = null
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "joyMouse" || key == "joyInvertY" || key == "pointer" || key == "carHomeOnly") main.post { apply() }
+        if (key == "joyMouse" || key == "joyInvertY" || key == "pointer" || key == "carHomeOnly" || key == "showBars") main.post { apply() }
     }
 
     override fun onServiceConnected() {
@@ -494,6 +494,7 @@ class JoyMouseService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT)
+        @Suppress("DEPRECATION") run { root.systemUiVisibility = barsFlags() }
         runCatching { w.addView(root, lp); overlay = root; dot = d; overlayLp = lp; keyFocus = false }
     }
 
@@ -512,11 +513,23 @@ class JoyMouseService : AccessibilityService() {
     private fun setKeyFocus(on: Boolean) {
         val o = overlay ?: return; val lp = overlayLp ?: return
         keyFocus = on
+        @Suppress("DEPRECATION") run { o.systemUiVisibility = barsFlags() }
         lp.flags = if (on) lp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
                    else lp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         runCatching { wm?.updateViewLayout(o, lp) }
         if (on) { o.isFocusableInTouchMode = true; o.requestFocus() }
     }
+
+    /**
+     * Når prikk-laget har fokus, er det laget som bestemmer om status- og navigasjonslinja vises.
+     * Det må derfor be om å skjule dem på samme måte som CarLink (valg under Settings → Screen).
+     */
+    @Suppress("DEPRECATION")
+    private fun barsFlags(): Int =
+        if (prefs().getBoolean("showBars", false)) 0
+        else View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
 
     private inner class KeyEater(ctx: Context) : FrameLayout(ctx) {
         init { isFocusable = true; isFocusableInTouchMode = true }
