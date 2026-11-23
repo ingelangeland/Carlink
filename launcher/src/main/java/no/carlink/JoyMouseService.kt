@@ -531,15 +531,21 @@ class JoyMouseService : AccessibilityService() {
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
             View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
 
+    private val mediaKeys = setOf(KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+        KeyEvent.KEYCODE_MUTE, KeyEvent.KEYCODE_HEADSETHOOK, KeyEvent.KEYCODE_MEDIA_STOP, KeyEvent.KEYCODE_MEDIA_NEXT,
+        KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_RECORD, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)
+
     private inner class KeyEater(ctx: Context) : FrameLayout(ctx) {
         init { isFocusable = true; isFocusableInTouchMode = true }
-        override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+        override fun dispatchKeyEvent(e: KeyEvent): Boolean = runCatching { eat(e) }.getOrDefault(true)
+
+        private fun eat(e: KeyEvent): Boolean {
             when (e.keyCode) {
                 KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER,
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> return true
                 KeyEvent.KEYCODE_BACK -> { if (e.action == KeyEvent.ACTION_UP) performGlobalAction(GLOBAL_ACTION_BACK); return true }
             }
-            if (KeyEvent.isMediaSessionKey(e.keyCode)) {
+            if (e.keyCode in mediaKeys) {
                 // Rattknappene skal fortsatt styre musikken
                 runCatching { getSystemService(android.media.AudioManager::class.java).dispatchMediaKeyEvent(e) }
                 return true
