@@ -188,7 +188,8 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             st(Perms.missing(context, Perms.forRole(false)).isEmpty(), "Missing – needed for connection and map")) { host.openAppPermissions() }
         val mock = runCatching {
             val ao = context.getSystemService(android.app.AppOpsManager::class.java)
-            ao.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_MOCK_LOCATION, android.os.Process.myUid(), context.packageName) ==
+            (if (android.os.Build.VERSION.SDK_INT >= 29) ao.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_MOCK_LOCATION, android.os.Process.myUid(), context.packageName)
+             else @Suppress("DEPRECATION") ao.checkOpNoThrow(android.app.AppOpsManager.OPSTR_MOCK_LOCATION, android.os.Process.myUid(), context.packageName)) ==
                 android.app.AppOpsManager.MODE_ALLOWED
         }.getOrDefault(false)
         action("Mock location (phone GPS in all apps)",

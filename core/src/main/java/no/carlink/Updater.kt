@@ -72,7 +72,7 @@ object Updater {
     /** Downloads and installs the update. Asks once for "install unknown apps" if needed. */
     suspend fun install(ctx: Context): Boolean = withContext(Dispatchers.IO) {
         val info = available.value ?: check(ctx) ?: return@withContext false
-        if (!ctx.packageManager.canRequestPackageInstalls()) {
+        if (Build.VERSION.SDK_INT >= 26 && !ctx.packageManager.canRequestPackageInstalls()) {
             status.value = "Allow CarLink to install updates, then tap Update again"
             withContext(Dispatchers.Main) {
                 ctx.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))
@@ -119,7 +119,7 @@ object Updater {
     private fun notifyAvailable(ctx: Context, info: Info) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         runCatching {
-            nm.createNotificationChannel(NotificationChannel("update", "Updates", NotificationManager.IMPORTANCE_DEFAULT))
+            if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("update", "Updates", NotificationManager.IMPORTANCE_DEFAULT))
             val open = (ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return)
                 .putExtra("carlink_update", true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             val pi = PendingIntent.getActivity(ctx, 6, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

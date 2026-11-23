@@ -7,7 +7,7 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "no.carlink.launcher"
-        minSdk = 29
+        minSdk = 24   // Android 7.0+ (many car head units run older Android)
         targetSdk = 35
         // Nytt versjonsnummer for hvert bygg (vises under App-info → versjon)
         val run = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()

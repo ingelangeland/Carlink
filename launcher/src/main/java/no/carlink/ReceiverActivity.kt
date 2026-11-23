@@ -55,8 +55,20 @@ class ReceiverActivity : AppCompatActivity() {
     private val homeRole = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { guide.next() }
 
     private fun isDefaultHome(): Boolean = runCatching {
-        getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_HOME)
+        if (android.os.Build.VERSION.SDK_INT >= 29)
+            getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_HOME)
+        else packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+            ?.activityInfo?.packageName == packageName
     }.getOrDefault(true)
+
+    /** Android's own "use as home screen" prompt (Android 10+), or the home-app settings page on older versions. */
+    private fun requestDefaultHome() {
+        if (android.os.Build.VERSION.SDK_INT >= 29) runCatching {
+            val rm = getSystemService(android.app.role.RoleManager::class.java)
+            homeRole.launch(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME)); return
+        }
+        Launch.start(this, Intent(Settings.ACTION_HOME_SETTINGS))
+    }
 
     override fun onResume() {
         super.onResume()
@@ -166,10 +178,7 @@ class ReceiverActivity : AppCompatActivity() {
         if (!demo) {
             guide.add(SetupGuide.Step("home", "CarLink as home screen", null,
                 done = { isDefaultHome() },
-                action = {
-                    val rm = getSystemService(android.app.role.RoleManager::class.java)
-                    homeRole.launch(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME))
-                }))
+                action = { requestDefaultHome() }))
             guide.add(SetupGuide.Step("notif", "Show music playing on the screen",
                 "To show the cover and control music playing on the screen itself (e.g. Tidal in the car), CarLink needs notification access.\n\n" +
                     "Turn on \"CarLink\" on the next page.",
@@ -362,12 +371,7 @@ class ReceiverActivity : AppCompatActivity() {
 
     private val settingsHost = object : SettingsPanel.Host {
         override fun restartLink() { LinkService.startReceiver(this@ReceiverActivity, force = true) }
-        override fun makeDefaultHome() {
-            runCatching {
-                val rm = getSystemService(android.app.role.RoleManager::class.java)
-                homeRole.launch(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME))
-            }.onFailure { Launch.start(this@ReceiverActivity, Intent(Settings.ACTION_HOME_SETTINGS)) }
-        }
+        override fun makeDefaultHome() = requestDefaultHome()
         override fun openJoystickTraining() { settings.close(immediate = true); startActivity(Intent(this@ReceiverActivity, JoystickActivity::class.java)) }
         override fun mockGpsChanged(on: Boolean) { if (on) explainMockGps() }
         override fun uiScaleChanged() = recreate()

@@ -253,7 +253,7 @@ class LinkService : Service() {
 
     private fun goForeground(sender: Boolean, audio: Boolean = false): Boolean {
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Connection", NotificationManager.IMPORTANCE_LOW))
+        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Connection", NotificationManager.IMPORTANCE_LOW))
         var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         if (sender && Perms.has(this, Manifest.permission.ACCESS_FINE_LOCATION)) {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
@@ -282,7 +282,7 @@ class LinkService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         if (!show || !prefs().getBoolean("audioReminder", false)) { nm.cancel(NOTIF_AUDIO); return }
         runCatching {
-            nm.createNotificationChannel(NotificationChannel("audio", "Audio to screen", NotificationManager.IMPORTANCE_DEFAULT))
+            if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("audio", "Audio to screen", NotificationManager.IMPORTANCE_DEFAULT))
             val i = (packageManager.getLaunchIntentForPackage(packageName) ?: return)
                 .putExtra("carlink_audio", true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             val pi = PendingIntent.getActivity(this, 3, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -611,7 +611,8 @@ class LinkService : Service() {
 
     /** Kobler skjermen til telefonens direkte Wi-Fi (Android viser en bekreftelsesdialog). */
     private suspend fun connectWifi(ssid: String, pass: String, sec: String): Network? =
-        suspendCancellableCoroutine { cont ->
+        if (Build.VERSION.SDK_INT < 29) null   // older Android: use the phone's hotspot instead
+        else suspendCancellableCoroutine { cont ->
             val cm = getSystemService(ConnectivityManager::class.java)
             val b = WifiNetworkSpecifier.Builder().setSsid(ssid)
             if (sec == "wpa3") b.setWpa3Passphrase(pass) else b.setWpa2Passphrase(pass)

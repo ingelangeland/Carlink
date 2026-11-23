@@ -108,6 +108,8 @@ jobs:
           # Bilskjermen: 1920x720 med to vanlige tettheter, og telefonen (S24 Ultra-lik)
           - { sim: "bil-240dpi", skin: "1920x720",  dens: "240", gpu: "swiftshader_indirect", tag: "", extra: "" }
           - { sim: "bil-160dpi", skin: "1920x720",  dens: "160", gpu: "swiftshader_indirect", tag: "", extra: "" }
+          # Older car head units: Android 7.0 (API 24)
+          - { sim: "bil-android7", skin: "1920x720", dens: "160", gpu: "swiftshader_indirect", tag: "", extra: "", api: 24 }
           - { sim: "telefon",    skin: "1080x2340", dens: "450", gpu: "swiftshader_indirect", tag: "", extra: "" }
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +133,7 @@ jobs:
           TAG: ${{ matrix.tag }}
           EXTRA: ${{ matrix.extra }}
         with:
-          api-level: 34
+          api-level: ${{ matrix.api || 34 }}
           arch: x86_64
           target: google_apis
           ram-size: 4096M

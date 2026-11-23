@@ -22,7 +22,7 @@ object JoyLog {
         val pi = PendingIntent.getActivity(ctx, 5, shareIntent(ctx), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val nm = ctx.getSystemService(NotificationManager::class.java)
         runCatching {
-            nm.createNotificationChannel(NotificationChannel("joy", "Joystick recording", NotificationManager.IMPORTANCE_DEFAULT))
+            if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("joy", "Joystick recording", NotificationManager.IMPORTANCE_DEFAULT))
             nm.notify(NOTIF, NotificationCompat.Builder(ctx, "joy")
                 .setSmallIcon(android.R.drawable.ic_menu_share)
                 .setContentTitle("Joystick recording from the car")

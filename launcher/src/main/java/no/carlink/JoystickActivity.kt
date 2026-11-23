@@ -79,7 +79,7 @@ class JoystickActivity : AppCompatActivity() {
         col.addView(title); col.addView(info); col.addView(counter)
         area = col
         setContentView(col)
-        col.setOnCapturedPointerListener { _, e -> record("RAW", e); true }
+        if (Build.VERSION.SDK_INT >= 26) col.setOnCapturedPointerListener { _, e -> record("RAW", e); true }
         header()
         lifecycleScope.launch { run() }
     }
@@ -93,12 +93,12 @@ class JoystickActivity : AppCompatActivity() {
             stepName = "${i + 1}"
             log.append("\n### Step ${i + 1}: ${s.text}\n")
             title.text = s.text
-            if (s.capture) { area.requestFocus(); area.requestPointerCapture() }
+            if (s.capture && Build.VERSION.SDK_INT >= 26) { area.requestFocus(); area.requestPointerCapture() }
             for (left in s.seconds downTo 1) {
                 info.text = "Step ${i + 1} of ${steps.size} · $left s"
                 delay(1000)
             }
-            if (s.capture) area.releasePointerCapture()
+            if (s.capture && Build.VERSION.SDK_INT >= 26) area.releasePointerCapture()
         }
         recording = false
         counter.text = "Received: $events signals"
@@ -127,7 +127,7 @@ class JoystickActivity : AppCompatActivity() {
         log.append("Screen: ${dm.widthPixels}x${dm.heightPixels} @ ${dm.densityDpi} dpi\n\nInput devices:\n")
         for (id in InputDevice.getDeviceIds()) {
             val d = InputDevice.getDevice(id) ?: continue
-            log.append("- #$id \"${d.name}\" vendor=${d.vendorId} product=${d.productId} sources=${sources(d.sources)} external=${d.isExternal}\n")
+            log.append("- #$id \"${d.name}\" vendor=${d.vendorId} product=${d.productId} sources=${sources(d.sources)} external=${if (Build.VERSION.SDK_INT >= 29) d.isExternal else "?"}\n")
             d.motionRanges.forEach { r ->
                 log.append("    axis ${MotionEvent.axisToString(r.axis)} ${r.min}..${r.max} source=${sources(r.source)}\n")
             }
@@ -184,6 +184,10 @@ class JoystickActivity : AppCompatActivity() {
 
     /** Lagres i Nedlastinger (synlig i Filer-appen) – ingen tillatelse trengs på Android 10+. */
     private fun save(name: String, text: String): Boolean = runCatching {
+        if (Build.VERSION.SDK_INT < 29) {
+            // Older Android: the app's own folder on the storage (Android/data/no.carlink.launcher/files)
+            java.io.File(getExternalFilesDir(null) ?: filesDir, name).writeText(text); return@runCatching true
+        }
         val v = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, name)
             put(MediaStore.Downloads.MIME_TYPE, "text/plain")
