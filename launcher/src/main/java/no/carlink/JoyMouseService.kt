@@ -262,7 +262,10 @@ class JoyMouseService : AccessibilityService() {
         when {
             // Posisjon: 57 12 … byte 8 = 0x10, x i byte 12, y i byte 13
             // Trykk-melding (byte 8 = 0): ta fokus før bilens Enter kommer
-            b[0] == 0x57 && b.size >= 14 && b[8] == 0 && wanted(this) -> main.post { joyActive() }
+            b[0] == 0x57 && b.size >= 14 && b[8] == 0 && wanted(this) -> {
+                val down = b[12] != 0 || b[13] != 0
+                main.post { joyActive(); if (down && SystemClock.elapsedRealtime() - readerStartedAt > 800) onPress(true) }
+            }
             b[0] == 0x57 && b.size >= 14 && b[8] == 0x10 && wanted(this) -> {
                 lastFrameAt = SystemClock.elapsedRealtime()
                 main.post { joyActive() }
@@ -298,13 +301,22 @@ class JoyMouseService : AccessibilityService() {
             if (tx < 0) { animating = false; return }
             val now = SystemClock.uptimeMillis()
             if (now - lastHoverCheck > 300) { lastHoverCheck = now; collectTargets() }
-            // Magnet: målet trekkes mot nærmeste knapp (ikke mens du holder inne og drar)
-            if (!pressed) snap(tx, ty) else { sx = tx; sy = ty; snapTarget = null }
+            // Trykk: stikka flytter seg litt når den trykkes ned. Prikken holdes i ro der den var
+            // like før trykket, helt til du tydelig drar (da blir det rulling).
+            if (pressed && !dragging && hypot(tx - rawPressX, ty - rawPressY) > 70f && Build.VERSION.SDK_INT >= 26) {
+                dragging = true; strokeX = downX; strokeY = downY; stroke = null
+            }
+            when {
+                (pressed && !dragging) || now < holdUntil -> { sx = downX; sy = downY }
+                pressed -> { sx = tx; sy = ty; snapTarget = null }
+                else -> snap(tx, ty)   // magnet mot nærmeste knapp
+            }
             if (cx < 0) { cx = sx; cy = sy }
             val dx = sx - cx; val dy = sy - cy
             cx += dx * 0.45f; cy += dy * 0.45f
             placeDot()
-            if (pressed) dragUpdate()
+            record(now)
+            if (pressed && dragging) dragUpdate()
             hoverUpdate()
             if (abs(dx) > 0.5f || abs(dy) > 0.5f) {
                 lastMoveAt = now
@@ -332,15 +344,48 @@ class JoyMouseService : AccessibilityService() {
 
     // ------------------------------------------------------------------ klikk og dra
 
+    // Hvor prikken var de siste ~0,5 s (for å finne stedet like før trykket)
+    private val histT = LongArray(32)
+    private val histX = FloatArray(32)
+    private val histY = FloatArray(32)
+    private var histI = 0
+    private var histN = 0
+    private var rawPressX = 0f
+    private var rawPressY = 0f
+    private var holdUntil = 0L
+
+    private fun record(now: Long) {
+        histT[histI] = now; histX[histI] = cx; histY[histI] = cy
+        histI = (histI + 1) % 32; if (histN < 32) histN++
+    }
+
+    private fun posBefore(t: Long): Pair<Float, Float> {
+        var best = -1; var oldest = -1
+        for (k in 0 until histN) {
+            val i = (histI - 1 - k + 32) % 32
+            oldest = i
+            if (histT[i] <= t) { best = i; break }
+        }
+        val i = if (best >= 0) best else oldest
+        return if (i >= 0) histX[i] to histY[i] else cx to cy
+    }
+
     private fun onPress(down: Boolean) {
         if (cx < 0) return
         if (down) {
+            if (pressed) return
             pressed = true; dragging = false; releasePending = false
-            downX = cx; downY = cy; downAt = SystemClock.uptimeMillis()
+            val now = SystemClock.uptimeMillis()
+            val (px, py) = posBefore(now - 180)
+            downX = px; downY = py; downAt = now
+            rawPressX = tx; rawPressY = ty
+            cx = px; cy = py; placeDot()
+            kick()
             dot?.setPressed(true)
         } else {
             if (!pressed) return
             pressed = false
+            holdUntil = SystemClock.uptimeMillis() + 250   // stikka spretter tilbake når den slippes
             dot?.setPressed(false)
             if (dragging) {
                 releasePending = true
@@ -361,12 +406,6 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun dragUpdate() {
-        if (!dragging) {
-            if (hypot(cx - downX, cy - downY) < 28f || Build.VERSION.SDK_INT < 26) return
-            dragging = true
-            strokeX = downX; strokeY = downY
-            stroke = null
-        }
         if (!strokeBusy) dragStep(end = false)
     }
 
