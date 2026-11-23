@@ -114,9 +114,12 @@ class MediaListener : NotificationListenerService() {
         val artist = md?.getString(MediaMetadata.METADATA_KEY_ARTIST)
             ?: md?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST) ?: md?.description?.subtitle?.toString() ?: ""
         val album = md?.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: ""
-        val playing = ps?.state == PlaybackState.STATE_PLAYING
+        // Bytte av sang (buffring/hopping) regnes som «spiller», så visningen ikke blinker mellom sangene
+        val playing = ps?.state in setOf(PlaybackState.STATE_PLAYING, PlaybackState.STATE_BUFFERING,
+            PlaybackState.STATE_SKIPPING_TO_NEXT, PlaybackState.STATE_SKIPPING_TO_PREVIOUS,
+            PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM, PlaybackState.STATE_CONNECTING)
         var pos = ps?.position ?: 0L
-        if (playing && ps != null && ps.lastPositionUpdateTime > 0) {
+        if (ps?.state == PlaybackState.STATE_PLAYING && ps.lastPositionUpdateTime > 0) {
             pos += ((SystemClock.elapsedRealtime() - ps.lastPositionUpdateTime) * ps.playbackSpeed).toLong()
         }
         val appName = try {

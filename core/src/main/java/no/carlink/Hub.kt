@@ -3,6 +3,7 @@ package no.carlink
 import android.graphics.Bitmap
 import android.os.SystemClock
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONObject
 
@@ -72,12 +73,48 @@ object Hub {
     /** Settes av demomodus, så knappene virker uten telefon. */
     @Volatile var demoHandler: ((String) -> Unit)? = null
 
+    /** Hvilken kilde som sist begynte å spille: true = telefonen, false = musikk på denne skjermen. */
+    @Volatile var remoteActive = true
+
     /**
-     * Skal knappene/visningen følge telefonens musikk? Ja hvis telefonen spiller, eller hvis
-     * ingenting spilles lokalt. (Tidal på bilskjermen vinner når den spiller.)
+     * Skal knappene/visningen følge telefonens musikk? Den som spiller vinner; spiller ingen
+     * (f.eks. et lite opphold mellom to sanger), gjelder den som sist startet avspilling.
      */
-    fun useRemote(c: Boolean, r: Media?, l: Media?): Boolean =
-        c && r != null && (r.playing || l == null || !l.playing)
+    fun useRemote(c: Boolean, r: Media?, l: Media?): Boolean {
+        if (!c || r == null) return false
+        if (l == null) return true
+        if (r.playing != l.playing) return r.playing
+        return remoteActive
+    }
+
+    /**
+     * Bare én kilde skal spille om gangen: starter du musikk på telefonen, pauses musikken på
+     * skjermen – og omvendt. Kjøres på bilskjermen mens telefonen er koblet til.
+     */
+    suspend fun arbitrate() = kotlinx.coroutines.coroutineScope {
+        launch {
+            var was = remoteMedia.value?.playing == true
+            remoteMedia.collect { r ->
+                val now = r?.playing == true
+                if (now && !was) {
+                    remoteActive = true
+                    if (localMedia.value?.playing == true) MediaListener.control("pause")
+                }
+                was = now
+            }
+        }
+        launch {
+            var was = localMedia.value?.playing == true
+            localMedia.collect { l ->
+                val now = l?.playing == true
+                if (now && !was) {
+                    remoteActive = false
+                    if (remoteMedia.value?.playing == true) send(JSONObject().put("t", "cmd").put("a", "pause"))
+                }
+                was = now
+            }
+        }
+    }
 
     fun mediaCommand(action: String) {
         demoHandler?.let { it(action); return }

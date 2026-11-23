@@ -666,7 +666,10 @@ class LinkService : Service() {
             if (auto && last == "car") main.postDelayed({ AutoPlay.resume(this@LinkService) }, 1500)
         }
         if (!isSender) main.post { MediaKeys.start(this@LinkService) }
-        val keysJob = if (!isSender) launch(Dispatchers.Main) { Hub.remoteMedia.collect { MediaKeys.update(it) } } else null
+        val keysJob = if (!isSender) launch(Dispatchers.Main) {
+            launch { Hub.arbitrate() }
+            Hub.remoteMedia.collect { MediaKeys.update(it) }
+        } else null
         if (isSender && autoStarted && projection == null) audioReminder(true)
         val pingJob = launch { while (isActive) { delay(5000); out.trySend("{\"t\":\"ping\"}") } }
         val feedJob = if (isSender) launch(Dispatchers.Main) { senderFeeds() } else null
