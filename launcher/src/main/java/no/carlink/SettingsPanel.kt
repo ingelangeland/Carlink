@@ -162,6 +162,12 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             PointerRoot.Size.entries.map { it.label }, PointerRoot.size(context).ordinal) {
             PointerRoot.setSize(context, PointerRoot.Size.entries[it]); host.pointerChanged()
         }
+        choice("Sound over buttons", "A soft sound when the dot moves onto something you can tap",
+            HoverSound.Sound.entries.map { it.label }, HoverSound.sound(context).ordinal) { HoverSound.set(context, s = HoverSound.Sound.entries[it]) }
+        if (HoverSound.sound(context) != HoverSound.Sound.OFF) {
+            choice("Tone", null, HoverSound.Tone.entries.map { it.label }, HoverSound.tone(context).ordinal) { HoverSound.set(context, t = HoverSound.Tone.entries[it]) }
+            choice("Sound volume", null, HoverSound.Level.entries.map { it.label }, HoverSound.level(context).ordinal) { HoverSound.set(context, l = HoverSound.Level.entries[it]) }
+        }
         action("Train the joystick", "Records the movements so control can be tuned to your car") { host.openJoystickTraining() }
     }
 

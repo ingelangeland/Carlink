@@ -50,13 +50,19 @@ class PointerRoot(ctx: Context) : FrameLayout(ctx) {
         return PointerIcon.create(b, r, r)
     }
 
+    private var lastHot: View? = null
+
     override fun onResolvePointerIcon(event: MotionEvent, pointerIndex: Int): PointerIcon? {
+        val target = buttonAt(this, event.getX(pointerIndex), event.getY(pointerIndex))
+        // A soft sound each time the dot moves onto a new button (choice in Settings → Joystick)
+        if (target != null && target !== lastHot) HoverSound.play(context)
+        lastHot = target
         val normal = plain ?: return super.onResolvePointerIcon(event, pointerIndex)
-        return if (clickableAt(this, event.getX(pointerIndex), event.getY(pointerIndex))) hot else normal
+        return if (target != null) hot else normal
     }
 
-    /** Finn om punktet ligger over noe som kan trykkes (raskt: følger bare grenen under prikken). */
-    private fun clickableAt(v: View, x: Float, y: Float): Boolean {
+    /** The button under the point, or null (fast: follows only the branch under the dot). */
+    private fun buttonAt(v: View, x: Float, y: Float): View? {
         if (v is ViewGroup) {
             for (i in v.childCount - 1 downTo 0) {
                 val c = v.getChildAt(i)
@@ -64,11 +70,11 @@ class PointerRoot(ctx: Context) : FrameLayout(ctx) {
                 val cx = x + v.scrollX - c.left - c.translationX
                 val cy = y + v.scrollY - c.top - c.translationY
                 if (cx < 0 || cy < 0 || cx >= c.width || cy >= c.height) continue
-                if (clickableAt(c, cx, cy)) return true
-                if (c.isClickable) return false   // dekkende flate (f.eks. bak app-oversikten): stopp her
+                buttonAt(c, cx, cy)?.let { return it }
+                if (c.isClickable) return null   // covering surface (e.g. behind the app overview): stop here
             }
         }
-        // Store trykkflater (kart, bakgrunn som lukker) regnes ikke som «knapp»
-        return v !== this && v.isClickable && v.isEnabled && v.width.toLong() * v.height < width.toLong() * height / 4
+        // Large touch areas (map, background that closes) don't count as a "button"
+        return if (v !== this && v.isClickable && v.isEnabled && v.width.toLong() * v.height < width.toLong() * height / 4) v else null
     }
 }
