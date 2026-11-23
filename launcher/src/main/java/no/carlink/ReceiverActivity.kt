@@ -159,6 +159,16 @@ class ReceiverActivity : AppCompatActivity() {
                 while (true) { DayNight.update(this@ReceiverActivity); kotlinx.coroutines.delay(60_000) }
             }
         }
+        // Lydbølger for musikk som spilles på skjermen selv – bare mens CarLink vises
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                try {
+                    kotlinx.coroutines.flow.combine(Hub.connected, Hub.remoteMedia, Hub.localMedia) { c, r, l ->
+                        l?.playing == true && !Hub.useRemote(c, r, l)
+                    }.collect { LocalViz.update(this@ReceiverActivity, it) }
+                } finally { LocalViz.stop() }
+            }
+        }
         // Look for a new version at start and every 6 hours (a notification appears if there is one)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
