@@ -112,9 +112,9 @@ class JoyMouseService : AccessibilityService() {
         if (!readerOn) return false
         // Bilens Tab/Enter kommer uten ekte enhet (sendt av CarInfoService) – de blokkeres,
         // så markeringen ikke hopper. Tastatur og rattknapper slipper igjennom.
-        val fromCar = InputDevice.getDevice(e.deviceId) == null
-        if (fromCar && (e.keyCode == KeyEvent.KEYCODE_TAB || e.keyCode == KeyEvent.KEYCODE_ENTER ||
-                e.keyCode == KeyEvent.KEYCODE_DPAD_CENTER)) return true
+        if (e.keyCode == KeyEvent.KEYCODE_TAB) return true   // ingen tastatur i bilen: Tab kommer alltid fra joysticken
+        val fromCar = InputDevice.getDevice(e.deviceId)?.let { it.isVirtual } ?: true
+        if (fromCar && (e.keyCode == KeyEvent.KEYCODE_ENTER || e.keyCode == KeyEvent.KEYCODE_DPAD_CENTER)) return true
         return false
     }
 
@@ -185,7 +185,8 @@ class JoyMouseService : AccessibilityService() {
     private fun onPosition(x: Int, y: Int) {
         val nx = axis(x)
         var ny = axis(y)
-        if (prefs().getBoolean("joyInvertY", false)) ny = 1f - ny
+        // Bilens y-akse går motsatt vei av skjermen; «Inverted» snur den tilbake
+        if (!prefs().getBoolean("joyInvertY", false)) ny = 1f - ny
         tx = nx * (screenW - 1)
         ty = ny * (screenH - 1)
         main.post { kick() }

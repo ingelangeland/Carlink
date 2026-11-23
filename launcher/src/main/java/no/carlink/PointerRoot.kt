@@ -60,7 +60,8 @@ class PointerRoot(ctx: Context) : FrameLayout(ctx) {
     private var focusedView: View? = null
     private val focusListener = android.view.ViewTreeObserver.OnGlobalFocusChangeListener { _, new ->
         val v = new?.takeIf { isDescendant(it) && it !== this }
-        if (v != null && v !== focusedView && size(context) != Size.OFF) HoverSound.play(context)
+        val mouse = JoyMouseService.running() && context.prefs().getBoolean("joyMouse", false)
+        if (!mouse && v != null && v !== focusedView && size(context) != Size.OFF) HoverSound.play(context)
         focusedView = v
         invalidate()
     }
@@ -89,6 +90,7 @@ class PointerRoot(ctx: Context) : FrameLayout(ctx) {
 
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
+        if (JoyMouseService.running() && context.prefs().getBoolean("joyMouse", false)) return   // prikken viser hvor du er
         val v = focusedView ?: return
         if (!v.isFocused || !v.isShown || v.width == 0) return
         v.getDrawingRect(tmp)

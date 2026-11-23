@@ -105,6 +105,13 @@ class ReceiverActivity : AppCompatActivity() {
     private var tabAccepted = false
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // Joysticken som mus: bilens Tab/Enter skal ikke flytte markeringen i CarLink
+        if (prefs().getBoolean("joyMouse", false) && JoyMouseService.running()) {
+            val k = event.keyCode
+            val virtualDev = event.device?.isVirtual ?: true
+            if (k == android.view.KeyEvent.KEYCODE_TAB ||
+                (virtualDev && (k == android.view.KeyEvent.KEYCODE_ENTER || k == android.view.KeyEvent.KEYCODE_DPAD_CENTER))) return true
+        }
         // Bilens joystick sender 3–5 «Tab» rett etter hverandre for ett skyv: gjør det til ett steg
         if (event.keyCode == android.view.KeyEvent.KEYCODE_TAB && prefs().getBoolean("joyCollapse", true)) {
             if (event.action == android.view.KeyEvent.ACTION_DOWN) {
