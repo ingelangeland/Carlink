@@ -58,7 +58,7 @@ fi
 
 echo "== Installerer"
 adb install -r -g ut/CarLink-bilskjerm.apk
-adb install -r -g ut/CarLink-Sender-telefon.apk
+adb install -r -g ut/CarLink-Sender-telefon.apk || echo "Sender-appen krever Android 10 – hoppes over her"
 
 go home;  shot 01-hjem 12
 adb logcat -d -s CarLinkUi:* > "$OUT/ui.txt" 2>&1 || true

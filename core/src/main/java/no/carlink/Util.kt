@@ -95,3 +95,8 @@ object Perms {
     fun has(ctx: Context, p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
     fun missing(ctx: Context, arr: Array<String>) = arr.filter { !has(ctx, it) }
 }
+
+/** Gradient with color positions (Android 10+); evenly spaced colors on older Android. */
+fun android.graphics.drawable.GradientDrawable.setColorsAt(colors: IntArray, offsets: FloatArray) {
+    if (Build.VERSION.SDK_INT >= 29) setColors(colors, offsets) else setColors(colors)
+}

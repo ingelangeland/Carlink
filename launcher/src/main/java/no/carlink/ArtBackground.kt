@@ -108,11 +108,11 @@ class ArtBackground(ctx: Context) : ScopedFrame(ctx) {
 
     private fun applyScrim(t: Ambient.Theme) {
         val d = t.dark
-        scrimSide.setColors(
+        scrimSide.setColorsAt(
             intArrayOf(Ambient.alpha(d, 0xB3), Ambient.alpha(d, 0x80), Ambient.alpha(d, 0x1A), Ambient.alpha(d, 0x00)),
             floatArrayOf(0f, 0.36f, 0.5f, 1f)
         )
-        scrimVert.setColors(
+        scrimVert.setColorsAt(
             intArrayOf(Ambient.alpha(d, 0x99), Ambient.alpha(d, 0x00), Ambient.alpha(d, 0x00), Ambient.alpha(d, 0xF2)),
             floatArrayOf(0f, 0.22f, 0.62f, 1f)
         )

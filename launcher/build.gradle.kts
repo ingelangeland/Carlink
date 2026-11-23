@@ -42,6 +42,7 @@ android {
     // Kodekontroll (Android Lint): rapport i stedet for å stoppe bygget
     lint {
         abortOnError = false
+        checkDependencies = true   // also check the shared code (core)
         checkReleaseBuilds = false
         textReport = true
         textOutput = file("build/lint.txt")

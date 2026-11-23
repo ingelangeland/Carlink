@@ -115,7 +115,7 @@ abstract class GlassOverlay(ctx: Context, private val blurTarget: View) : Scoped
     private fun applySmoke(t: Ambient.Theme) {
         val d = Ambient.deep(t.dark)
         // Nesten klart i midten, gradvis mørkere mot kanten («røykfarget», ikke svart)
-        smokeBg.setColors(
+        smokeBg.setColorsAt(
             intArrayOf(Ambient.alpha(d, 0x2E), Ambient.alpha(d, 0x38), Ambient.alpha(d, 0x8C), Ambient.alpha(d, 0xC4)),
             floatArrayOf(0f, 0.38f, 0.72f, 1f),
         )
