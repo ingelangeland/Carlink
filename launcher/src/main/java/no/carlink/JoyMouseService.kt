@@ -287,6 +287,7 @@ class JoyMouseService : AccessibilityService() {
     private fun axis(v: Int): Float = ((v - 10) / 235f).coerceIn(0f, 1f)
 
     private fun onPosition(x: Int, y: Int) {
+        if (logging()) log("CAR pos x=$x y=$y")
         val nx = axis(x)
         var ny = axis(y)
         // Bilens y-akse går motsatt vei av skjermen; «Inverted» snur den tilbake
@@ -305,9 +306,11 @@ class JoyMouseService : AccessibilityService() {
             // like før trykket, helt til du tydelig drar (da blir det rulling).
             if (pressed && !dragging && hypot(tx - rawPressX, ty - rawPressY) > 70f && Build.VERSION.SDK_INT >= 26) {
                 dragging = true; strokeX = downX; strokeY = downY; stroke = null
+                log("DRAG start from %.0f,%.0f".format(downX, downY))
             }
             when {
-                (pressed && !dragging) || now < holdUntil -> { sx = downX; sy = downY }
+                pressed && !dragging -> { sx = downX; sy = downY }
+                now < holdUntil -> { sx = holdX; sy = holdY }
                 pressed -> { sx = tx; sy = ty; snapTarget = null }
                 else -> snap(tx, ty)   // magnet mot nærmeste knapp
             }
@@ -316,6 +319,8 @@ class JoyMouseService : AccessibilityService() {
             cx += dx * 0.45f; cy += dy * 0.45f
             placeDot()
             record(now)
+            if (logging()) log("FRAME raw=%.0f,%.0f target=%.0f,%.0f dot=%.0f,%.0f pressed=%s drag=%s snap=%s".format(
+                tx, ty, sx, sy, cx, cy, pressed, dragging, snapTarget?.flattenToString() ?: "-"))
             if (pressed && dragging) dragUpdate()
             hoverUpdate()
             if (abs(dx) > 0.5f || abs(dy) > 0.5f) {
@@ -353,6 +358,40 @@ class JoyMouseService : AccessibilityService() {
     private var rawPressX = 0f
     private var rawPressY = 0f
     private var holdUntil = 0L
+    private var holdX = 0f
+    private var holdY = 0f
+
+    // ------------------------------------------------------------------ musopptak (Settings → Joystick)
+
+    private var logUntil = 0L
+    private var logStart = 0L
+    private val logBuf = StringBuilder(256 * 1024)
+
+    fun startLog(seconds: Int) {
+        logBuf.setLength(0)
+        logStart = SystemClock.uptimeMillis(); logUntil = logStart + seconds * 1000L
+        logBuf.append("CarLink mouse log · ${Build.MODEL} · screen ${screenW.toInt()}x${screenH.toInt()} · snap=${prefs().getInt("joySnap", 1)} invertY=${prefs().getBoolean("joyInvertY", false)}\n")
+        logBuf.append("time ms · event\n")
+        main.postDelayed({ finishLog() }, seconds * 1000L + 200)
+    }
+
+    private fun logging() = SystemClock.uptimeMillis() < logUntil
+
+    private fun log(line: String) {
+        if (!logging() || logBuf.length > 3_000_000) return
+        synchronized(logBuf) { logBuf.append(SystemClock.uptimeMillis() - logStart).append(' ').append(line).append('\n') }
+    }
+
+    private fun finishLog() {
+        logUntil = 0
+        val text = synchronized(logBuf) { logBuf.toString() }
+        val name = "CarLink-mouse-log-" + java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date()) + ".txt"
+        val sent = Hub.send(org.json.JSONObject().put("t", "joylog").put("name", name).put("text", text))
+        runCatching { java.io.File(getExternalFilesDir(null) ?: filesDir, name).writeText(text) }
+        android.widget.Toast.makeText(this,
+            if (sent) "Mouse log sent to the phone – tap the notification there to share it" else "Phone not connected – log saved on the screen",
+            android.widget.Toast.LENGTH_LONG).show()
+    }
 
     private fun record(now: Long) {
         histT[histI] = now; histX[histI] = cx; histY[histI] = cy
@@ -371,6 +410,7 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun onPress(down: Boolean) {
+        log("PRESS ${if (down) "down" else "up"} dot=%.0f,%.0f raw=%.0f,%.0f".format(cx, cy, tx, ty))
         if (cx < 0) return
         if (down) {
             if (pressed) return
@@ -380,12 +420,16 @@ class JoyMouseService : AccessibilityService() {
             downX = px; downY = py; downAt = now
             rawPressX = tx; rawPressY = ty
             cx = px; cy = py; placeDot()
+            log("PRESS uses position from 180ms before: %.0f,%.0f".format(px, py))
             kick()
             dot?.setPressed(true)
         } else {
             if (!pressed) return
             pressed = false
-            holdUntil = SystemClock.uptimeMillis() + 250   // stikka spretter tilbake når den slippes
+            // Stikka spretter tilbake når den slippes: hold prikken der den var (etter rulling: der rullingen sluttet)
+            holdX = cx; holdY = cy
+            holdUntil = SystemClock.uptimeMillis() + (if (dragging) 450 else 250)
+            log("RELEASE at %.0f,%.0f dragging=%s held=%dms".format(cx, cy, dragging, SystemClock.uptimeMillis() - downAt))
             dot?.setPressed(false)
             if (dragging) {
                 releasePending = true
@@ -398,6 +442,7 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun tap(x: Float, y: Float, duration: Long) {
+        log("TAP at %.0f,%.0f duration=%d".format(x, y, duration))
         val p = Path().apply { moveTo(x, y) }
         runCatching {
             dispatchGesture(GestureDescription.Builder()
@@ -418,6 +463,7 @@ class JoyMouseService : AccessibilityService() {
         val s = runCatching {
             stroke?.continueStroke(path, 0, 40, !end) ?: GestureDescription.StrokeDescription(path, 0, 40, !end)
         }.getOrNull() ?: run { stroke = null; return }
+        log("DRAG step %.0f,%.0f -> %.0f,%.0f end=%s".format(strokeX, strokeY, toX, toY, end))
         stroke = s; strokeX = toX; strokeY = toY; strokeBusy = true
         val ok = runCatching {
             dispatchGesture(GestureDescription.Builder().addStroke(s).build(), object : GestureResultCallback() {
@@ -586,6 +632,7 @@ class JoyMouseService : AccessibilityService() {
         override fun dispatchKeyEvent(e: KeyEvent): Boolean = runCatching { eat(e) }.getOrDefault(true)
 
         private fun eat(e: KeyEvent): Boolean {
+            log("KEY ${KeyEvent.keyCodeToString(e.keyCode)} ${if (e.action == KeyEvent.ACTION_DOWN) "down" else "up"} meta=${e.metaState}")
             when (e.keyCode) {
                 KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER,
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> return true

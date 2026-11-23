@@ -475,6 +475,7 @@ class ReceiverActivity : AppCompatActivity() {
                 }
             }
         }
+        override fun closeSettings() { if (::settings.isInitialized) settings.close() }
         override fun systemReport() {
             android.widget.Toast.makeText(this@ReceiverActivity, "Making system report …", android.widget.Toast.LENGTH_SHORT).show()
             lifecycleScope.launch {

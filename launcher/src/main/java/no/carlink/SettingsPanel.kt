@@ -29,6 +29,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         fun restartLink()
         fun systemBarsChanged()
         fun systemReport()
+        fun closeSettings()
         fun systemAnimationsChanged(level: Int)
         fun joyMouseChanged(on: Boolean)
         fun makeDefaultHome()
@@ -192,6 +193,11 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         if (HoverSound.sound(context) != HoverSound.Sound.OFF) {
             choice("Tone", null, HoverSound.Tone.entries.map { it.label }, HoverSound.tone(context).ordinal) { HoverSound.set(context, t = HoverSound.Tone.entries[it]) }
             choice("Sound volume", null, HoverSound.Level.entries.map { it.label }, HoverSound.level(context).ordinal) { HoverSound.set(context, l = HoverSound.Level.entries[it]) }
+        }
+        if (mouse) action("Record mouse log (60 s)", "Use the joystick normally for a minute – the log is sent to the phone for Claude") {
+            val svc = JoyMouseService.instance
+            if (svc == null) android.widget.Toast.makeText(context, "Joystick as mouse isn't running", android.widget.Toast.LENGTH_LONG).show()
+            else { svc.startLog(60); android.widget.Toast.makeText(context, "Recording for 60 seconds …", android.widget.Toast.LENGTH_LONG).show(); host.closeSettings() }
         }
         action("Train the joystick", "Records the movements so control can be tuned to your car") { host.openJoystickTraining() }
         action("System report", "Finds what in the car turns the joystick into jumps – sent to the phone") { host.systemReport() }
