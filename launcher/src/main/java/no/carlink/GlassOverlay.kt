@@ -68,7 +68,7 @@ abstract class GlassOverlay(ctx: Context, private val blurTarget: View) : Scoped
         visibility = VISIBLE
         onOpening()
         openCount++; Ambient.overlayOpen = true
-        animateTo(1f, 240)
+        animateTo(1f, 160)
     }
 
     fun close(immediate: Boolean = false) {
@@ -76,7 +76,7 @@ abstract class GlassOverlay(ctx: Context, private val blurTarget: View) : Scoped
         isOpen = false
         openCount = (openCount - 1).coerceAtLeast(0); Ambient.overlayOpen = openCount > 0
         if (immediate) { anim?.cancel(); setProgress(0f); visibility = INVISIBLE; frost.setImageDrawable(null); return }
-        animateTo(0f, 200)
+        animateTo(0f, 130)
     }
 
     private fun animateTo(target: Float, ms: Long) {

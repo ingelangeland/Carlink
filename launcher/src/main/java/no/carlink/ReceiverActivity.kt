@@ -452,6 +452,19 @@ class ReceiverActivity : AppCompatActivity() {
                 }
             }
         }
+        override fun systemAnimationsChanged(level: Int) {
+            val scale = when (level) { 1 -> "0.5"; 2 -> "0"; else -> "1" }
+            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val ok = Root.run("""
+                    settings put global window_animation_scale $scale
+                    settings put global transition_animation_scale $scale
+                    settings put global animator_duration_scale $scale
+                """.trimIndent()) != null
+                if (!ok) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(this@ReceiverActivity, "Needs root – set it under Developer options instead", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
         override fun systemReport() {
             android.widget.Toast.makeText(this@ReceiverActivity, "Making system report …", android.widget.Toast.LENGTH_SHORT).show()
             lifecycleScope.launch {

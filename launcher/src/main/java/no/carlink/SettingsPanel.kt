@@ -29,6 +29,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         fun restartLink()
         fun systemBarsChanged()
         fun systemReport()
+        fun systemAnimationsChanged(level: Int)
         fun joyMouseChanged(on: Boolean)
         fun makeDefaultHome()
         fun openJoystickTraining()
@@ -200,6 +201,10 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         choice("Size of text and buttons", null, UiScale.labels.toList(),
             UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
             context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()
+        }
+        choice("Android animations", "Speed of opening apps and switching screens in the whole system",
+            listOf("Normal", "Fast", "Off"), context.prefs().getInt("sysAnim", 0)) {
+            context.prefs().edit().putInt("sysAnim", it).apply(); host.systemAnimationsChanged(it)
         }
         choice("Status and navigation bars", "Hidden: swipe in from the edge to show them – they hide again by themselves",
             listOf("Hide automatically", "Always show"), if (context.prefs().getBoolean("showBars", false)) 1 else 0) {
