@@ -34,6 +34,9 @@ import kotlin.math.roundToInt
  * Alle flater fargelegges med coverets farger (Ambient.theme).
  */
 @SuppressLint("ViewConstructor")
+/** Hvor mye appene og overgangen til coveret er flyttet mot klokka (ca. 1 cm). */
+const val SHIFT_DP = 63
+
 class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
 
     interface Actions {
@@ -367,15 +370,18 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         (rightCol.layoutParams as LinearLayout.LayoutParams).weight = coverFrac
 
         val ultra = w.toFloat() / h >= 2.0f
-        if (ultra != ultraWide || leftCol.childCount > 0 && (favGrid.layoutParams as LinearLayout.LayoutParams).weight == 0f) {
+        if (ultra || ultra != ultraWide || leftCol.childCount > 0 && (favGrid.layoutParams as LinearLayout.LayoutParams).weight == 0f) {
             ultraWide = ultra
             val cardLp = clockCard.layoutParams as LinearLayout.LayoutParams
             val gridLp = favGrid.layoutParams as LinearLayout.LayoutParams
             if (ultra) {
                 leftCol.orientation = LinearLayout.HORIZONTAL
                 leftCol.gravity = Gravity.CENTER_VERTICAL
-                cardLp.width = 0; cardLp.height = WRAP; cardLp.weight = 0.46f
-                gridLp.width = 0; gridLp.height = MATCH; gridLp.weight = 0.54f
+                // Appene står ca. 1 cm (63 dp) nærmere klokka enn en jevn deling ville gitt
+                val leftW = (w * (1f - coverFrac)).coerceAtLeast(1f)
+                val cardW = (0.46f - SHIFT_DP.dp / leftW).coerceIn(0.3f, 0.46f)
+                cardLp.width = 0; cardLp.height = WRAP; cardLp.weight = cardW
+                gridLp.width = 0; gridLp.height = MATCH; gridLp.weight = 1f - cardW
                 gridLp.topMargin = 0; gridLp.leftMargin = 24.dp
                 favGrid.gravity = Gravity.CENTER_VERTICAL
             } else {

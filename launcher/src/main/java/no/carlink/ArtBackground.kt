@@ -100,7 +100,8 @@ class ArtBackground(ctx: Context) : ScopedFrame(ctx) {
         post {
             for (iv in listOf(sa, sb)) {
                 val lp = iv.layoutParams as LayoutParams
-                lp.width = size; lp.height = size
+                // Litt bredere enn høyt, så overgangen fra coveret starter ca. 1 cm nærmere appene
+                lp.width = (size + SHIFT_DP.dp).coerceAtMost(w); lp.height = size
                 iv.layoutParams = lp
             }
         }
