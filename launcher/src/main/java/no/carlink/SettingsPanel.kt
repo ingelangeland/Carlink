@@ -159,6 +159,10 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
     }
 
     private fun joystick() {
+        choice("Joystick steps", "The car sends several signals per push – «One per push» moves one item at a time",
+            listOf("One per push", "Every signal"), if (context.prefs().getBoolean("joyCollapse", true)) 0 else 1) {
+            context.prefs().edit().putBoolean("joyCollapse", it == 0).apply()
+        }
         choice("Dot as mouse pointer", "Highly visible dot in the cover color",
             PointerRoot.Size.entries.map { it.label }, PointerRoot.size(context).ordinal) {
             PointerRoot.setSize(context, PointerRoot.Size.entries[it]); host.pointerChanged()

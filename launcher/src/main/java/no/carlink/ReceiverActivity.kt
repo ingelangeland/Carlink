@@ -101,7 +101,19 @@ class ReceiverActivity : AppCompatActivity() {
     }
 
     /** Rattknappene (neste/forrige/play/pause) – går til telefonen når den spiller, ellers lokalt. */
+    private var lastTab = 0L
+    private var tabAccepted = false
+
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // Bilens joystick sender 3–5 «Tab» rett etter hverandre for ett skyv: gjør det til ett steg
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_TAB && prefs().getBoolean("joyCollapse", true)) {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                val gap = event.eventTime - lastTab
+                lastTab = event.eventTime
+                tabAccepted = gap > 200
+                if (!tabAccepted) return true
+            } else if (!tabAccepted) return true
+        }
         val a = MediaKeys.actionFor(event.keyCode)
         if (a != null) {
             if (event.action == android.view.KeyEvent.ACTION_UP) Hub.mediaCommand(a)

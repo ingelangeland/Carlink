@@ -52,6 +52,56 @@ class PointerRoot(ctx: Context) : FrameLayout(ctx) {
 
     private var lastHot: View? = null
 
+    // ---- Joysticken i bilen sender «neste» (Tab) og «velg» (Enter): vis tydelig hvor du står
+    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val tmp = android.graphics.Rect()
+    private val ringRect = android.graphics.RectF()
+    private var focusedView: View? = null
+    private val focusListener = android.view.ViewTreeObserver.OnGlobalFocusChangeListener { _, new ->
+        val v = new?.takeIf { isDescendant(it) && it !== this }
+        if (v != null && v !== focusedView && size(context) != Size.OFF) HoverSound.play(context)
+        focusedView = v
+        invalidate()
+    }
+
+    init { setWillNotDraw(false) }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        viewTreeObserver.addOnGlobalFocusChangeListener(focusListener)
+        viewTreeObserver.addOnScrollChangedListener(moved)   // ringen følger med når lister rulles
+    }
+
+    private val moved = android.view.ViewTreeObserver.OnScrollChangedListener { if (focusedView != null) invalidate() }
+
+    override fun onDetachedFromWindow() {
+        viewTreeObserver.removeOnGlobalFocusChangeListener(focusListener)
+        viewTreeObserver.removeOnScrollChangedListener(moved)
+        super.onDetachedFromWindow()
+    }
+
+    private fun isDescendant(v: View): Boolean {
+        var p = v.parent
+        while (p != null) { if (p === this) return true; p = p.parent }
+        return false
+    }
+
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        val v = focusedView ?: return
+        if (!v.isFocused || !v.isShown || v.width == 0) return
+        v.getDrawingRect(tmp)
+        runCatching { offsetDescendantRectToMyCoords(v, tmp) }.onFailure { return }
+        val pad = 4.dp.toFloat()
+        ringRect.set(tmp.left - pad, tmp.top - pad, tmp.right + pad, tmp.bottom + pad)
+        val rad = (minOf(ringRect.width(), ringRect.height()) / 2f).coerceAtMost(22.dp.toFloat())
+        glowPaint.color = (accent and 0x00FFFFFF) or 0x55000000; glowPaint.strokeWidth = 9.dp.toFloat()
+        canvas.drawRoundRect(ringRect, rad, rad, glowPaint)
+        ringPaint.color = 0xFFFFFFFF.toInt(); ringPaint.strokeWidth = 3.dp.toFloat()
+        canvas.drawRoundRect(ringRect, rad, rad, ringPaint)
+    }
+
     override fun onResolvePointerIcon(event: MotionEvent, pointerIndex: Int): PointerIcon? {
         val target = buttonAt(this, event.getX(pointerIndex), event.getY(pointerIndex))
         // A soft sound each time the dot moves onto a new button (choice in Settings → Joystick)

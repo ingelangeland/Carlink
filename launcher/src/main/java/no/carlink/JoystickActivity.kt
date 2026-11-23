@@ -163,7 +163,7 @@ class JoystickActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
         if (!recording) return super.dispatchKeyEvent(e)
-        add("${t()} KEY ${if (e.action == KeyEvent.ACTION_DOWN) "DOWN" else "UP"} ${KeyEvent.keyCodeToString(e.keyCode)} repeat=${e.repeatCount} source=${sources(e.source)} device=\"${e.device?.name}\"")
+        add("${t()} KEY ${if (e.action == KeyEvent.ACTION_DOWN) "DOWN" else "UP"} ${KeyEvent.keyCodeToString(e.keyCode)} repeat=${e.repeatCount} meta=${e.metaState} scan=${e.scanCode} flags=0x${Integer.toHexString(e.flags)} dev=${e.deviceId} source=${sources(e.source)} device=\"${e.device?.name}\"")
         return true   // alle taster fanges under opptaket (også Back), så opptaket ikke avbrytes
     }
 
