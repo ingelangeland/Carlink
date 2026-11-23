@@ -140,7 +140,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             AutoPlay.enabled(context)) { context.prefs().edit().putBoolean("autoPlay", it).apply() }
         val buf = intArrayOf(300, 600, 1000, 1500, 2500)
         choice("Audio buffer (audio over Wi-Fi)", "A larger buffer gives fewer glitches but slightly slower response",
-            listOf("0,3 s", "0,6 s", "1 s", "1,5 s", "2,5 s"), buf.indexOf(context.prefs().getInt("audioBufferMs", 600)).coerceAtLeast(0)) {
+            listOf("0.3 s", "0.6 s", "1 s", "1.5 s", "2.5 s"), buf.indexOf(context.prefs().getInt("audioBufferMs", 600)).coerceAtLeast(0)) {
             context.prefs().edit().putInt("audioBufferMs", buf[it]).apply()
         }
         choice("Sound wave", null, listOf("Wave", "Capsules"),
