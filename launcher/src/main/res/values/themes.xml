@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <color name="bg">#0E1116</color>
     <color name="ic_bg">#101826</color>
     <style name="Theme.CarLink" parent="Theme.Material3.Dark.NoActionBar">
@@ -6,5 +6,7 @@
         <item name="android:statusBarColor">@color/bg</item>
         <item name="android:navigationBarColor">@color/bg</item>
         <item name="colorPrimary">#4C8DFF</item>
+        <!-- Ingen grå firkant rundt knapper når bilens taster flytter markeringen (CarLink har egen ring) -->
+        <item name="android:defaultFocusHighlightEnabled" tools:targetApi="26">false</item>
     </style>
 </resources>
