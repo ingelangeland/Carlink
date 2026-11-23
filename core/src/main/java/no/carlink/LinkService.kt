@@ -463,7 +463,7 @@ class LinkService : Service() {
         }
     }
 
-    private fun stopHotspot() { runCatching { hotspot?.close() }; hotspot = null }
+    private fun stopHotspot() { if (Build.VERSION.SDK_INT >= 26) runCatching { hotspot?.close() }; hotspot = null }
 
     // ---------------------------------------------------------------- MOTTAKER
 
