@@ -349,7 +349,7 @@ class LinkService : Service() {
         var hs: JSONObject? = null
         if (useHotspot) {
             setStatus("Starting direct Wi-Fi …")
-            hs = startHotspot() ?: return@coroutineScope setStatus("Couldn't start direct Wi-Fi (turn off the regular hotspot and try again)")
+            hs = (if (Build.VERSION.SDK_INT >= 29) startHotspot() else null) ?: return@coroutineScope setStatus("Couldn't start direct Wi-Fi (turn off the regular hotspot and try again)")
         }
         val server = try {
             track(ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(Protocol.PORT)) })
@@ -432,6 +432,7 @@ class LinkService : Service() {
     } catch (_: Exception) { emptyList() }
 
     @SuppressLint("MissingPermission")
+    @androidx.annotation.RequiresApi(29)
     private suspend fun startHotspot(): JSONObject? = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { cont ->
             val wm = applicationContext.getSystemService(WifiManager::class.java)
@@ -781,6 +782,7 @@ class LinkService : Service() {
      * og sender den som rå PCM over en egen TCP-forbindelse.
      */
     private fun startAudioCapture(code: Int, data: Intent, mute: Boolean) {
+        if (Build.VERSION.SDK_INT < 29) { setStatus("Audio streaming needs Android 10 on the phone"); return }
         if (mode != "sender") { Hub.status.value = "Connect to the screen first"; return }
         if (!goForeground(true, audio = true)) return
         audioReminder(false)
@@ -808,10 +810,11 @@ class LinkService : Service() {
 
     private fun startAudioIfReady() {
         if (projection == null || !Hub.connected.value || audioJob?.isActive == true) return
-        audioJob = scope.launch { audioSenderLoop() }
+        if (Build.VERSION.SDK_INT >= 29) audioJob = scope.launch { audioSenderLoop() }
     }
 
     @SuppressLint("MissingPermission")
+    @androidx.annotation.RequiresApi(29)
     private suspend fun audioSenderLoop() {
         val mp = projection ?: return
         val rate = Protocol.AUDIO_RATE
@@ -1061,7 +1064,7 @@ class LinkService : Service() {
                 accuracy = l.accuracy.coerceAtLeast(1f)
                 time = System.currentTimeMillis()
                 elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-                verticalAccuracyMeters = 10f; speedAccuracyMetersPerSecond = 1f; bearingAccuracyDegrees = 10f
+                if (Build.VERSION.SDK_INT >= 26) { verticalAccuracyMeters = 10f; speedAccuracyMetersPerSecond = 1f; bearingAccuracyDegrees = 10f }
             }
             lm.setTestProviderLocation(p, loc)
         } catch (e: SecurityException) {

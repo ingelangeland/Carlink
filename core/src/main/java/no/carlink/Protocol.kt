@@ -91,7 +91,7 @@ object Protocol {
     }
 
     private fun encode(b: Bitmap): String {
-        val soft = if (b.config == Bitmap.Config.HARDWARE) b.copy(Bitmap.Config.ARGB_8888, false) else b
+        val soft = if (android.os.Build.VERSION.SDK_INT >= 26 && b.config == Bitmap.Config.HARDWARE) b.copy(Bitmap.Config.ARGB_8888, false) else b
         val scale = min(1f, 1024f / max(soft.width, soft.height)) // stort nok til å fylle bilskjermen
         val scaled = if (scale < 1f) Bitmap.createScaledBitmap(
             soft, (soft.width * scale).toInt().coerceAtLeast(1), (soft.height * scale).toInt().coerceAtLeast(1), true

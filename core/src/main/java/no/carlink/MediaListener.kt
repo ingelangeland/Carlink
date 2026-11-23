@@ -3,6 +3,7 @@ package no.carlink
 import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Build
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -107,7 +108,7 @@ class MediaListener : NotificationListenerService() {
         var art: Bitmap? = md?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: md?.getBitmap(MediaMetadata.METADATA_KEY_ART)
             ?: md?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-        if (art != null && art.config == Bitmap.Config.HARDWARE) art = art.copy(Bitmap.Config.ARGB_8888, false)
+        if (art != null && Build.VERSION.SDK_INT >= 26 && art.config == Bitmap.Config.HARDWARE) art = art.copy(Bitmap.Config.ARGB_8888, false)
 
         val title = md?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: md?.description?.title?.toString() ?: ""
         val artist = md?.getString(MediaMetadata.METADATA_KEY_ARTIST)
