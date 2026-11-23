@@ -165,6 +165,11 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         toggle("Joystick as mouse", "A dot follows the Remote Touch in all apps – press to tap, hold and move to scroll", mouse) {
             host.joyMouseChanged(it)
         }
+        toggle("Car system only by holding Home", "The scroll button scrolls instead of opening the car's own system – the reversing camera works as before",
+            JoyMouseService.homeOnly(context)) {
+            context.prefs().edit().putBoolean("carHomeOnly", it).apply()
+            if (it) host.joyMouseChanged(context.prefs().getBoolean("joyMouse", false))
+        }
         if (mouse) choice("Up and down", "Flip if the dot moves the wrong way vertically",
             listOf("Normal", "Inverted"), if (context.prefs().getBoolean("joyInvertY", false)) 1 else 0) {
             context.prefs().edit().putBoolean("joyInvertY", it == 1).apply()

@@ -439,7 +439,7 @@ class ReceiverActivity : AppCompatActivity() {
         override fun systemBarsChanged() = applySystemBars()
         override fun joyMouseChanged(on: Boolean) {
             prefs().edit().putBoolean("joyMouse", on).apply()
-            if (!on) return
+            if (!on && !JoyMouseService.homeOnly(this@ReceiverActivity)) return
             if (JoyMouseService.running()) return
             lifecycleScope.launch {
                 val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {

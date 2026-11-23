@@ -39,7 +39,10 @@ class JoyMouseService : AccessibilityService() {
         const val COMPONENT = "no.carlink.launcher/no.carlink.JoyMouseService"
         @Volatile var instance: JoyMouseService? = null
         @Volatile var lastFrameAt = 0L
+        const val CAR_SYSTEM = "com.spd.xhsntg"
         fun wanted(ctx: Context) = ctx.prefs().getBoolean("joyMouse", false)
+        /** Bilens eget system bare ved langt trykk på Hjem (scrolleknappene ruller i stedet). */
+        fun homeOnly(ctx: Context) = ctx.prefs().getBoolean("carHomeOnly", true)
         fun running() = instance != null
     }
 
@@ -81,7 +84,7 @@ class JoyMouseService : AccessibilityService() {
     @Volatile private var proc: Process? = null
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "joyMouse" || key == "joyInvertY" || key == "pointer") main.post { apply() }
+        if (key == "joyMouse" || key == "joyInvertY" || key == "pointer" || key == "carHomeOnly") main.post { apply() }
     }
 
     override fun onServiceConnected() {
@@ -98,18 +101,82 @@ class JoyMouseService : AccessibilityService() {
         super.onDestroy()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.packageName == CAR_SYSTEM) carSystemShown()
+    }
     override fun onInterrupt() {}
 
     private fun apply() {
-        if (wanted(this)) start() else stop()
+        if (wanted(this) || homeOnly(this)) start() else stop()
+        if (wanted(this)) addOverlay() else removeOverlay()
         dot?.refresh()
+    }
+
+    // ------------------------------------------------------------------ knappene ved joysticken
+
+    @Volatile private var scrollKeyAt = 0L
+    @Volatile private var allowCarUntil = 0L
+    private var homeLong = false
+
+    /** Scrolleknappen (0x32 opp / 0x33 ned) og Hjem (0x34: 1 ned, 2 holdes, 0 slipp). */
+    private fun onCarButton(code: Int, state: Int) {
+        val now = SystemClock.elapsedRealtime()
+        when (code) {
+            0x32, 0x33 -> {
+                scrollKeyAt = now
+                if (state == 1 && wanted(this)) main.post { scrollAtDot(up = code == 0x32) }
+            }
+            0x34 -> when (state) {
+                1 -> homeLong = false
+                2 -> homeLong = true
+                0 -> if (homeLong) {
+                    homeLong = false
+                    allowCarUntil = now + 6000
+                    // Bilen sender «Hjem» når knappen slippes – åpne bilens system rett etter
+                    main.postDelayed({ openCarSystem() }, 600)
+                }
+            }
+        }
+    }
+
+    private fun openCarSystem() {
+        allowCarUntil = SystemClock.elapsedRealtime() + 6000
+        runCatching {
+            val i = packageManager.getLaunchIntentForPackage(CAR_SYSTEM) ?: return
+            startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /** Bilens system åpnet av scrolleknappen: gå rett tilbake. (Ryggekamera og langt Hjem får være.) */
+    private fun carSystemShown() {
+        if (!homeOnly(this)) return
+        val now = SystemClock.elapsedRealtime()
+        if (now < allowCarUntil || now - scrollKeyAt > 2500) return
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        main.postDelayed({
+            val front = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+            if (front == CAR_SYSTEM) performGlobalAction(GLOBAL_ACTION_HOME)
+        }, 500)
+    }
+
+    private fun scrollAtDot(up: Boolean) {
+        val x = if (cx >= 0) cx else screenW / 2
+        val y = if (cy >= 0) cy else screenH / 2
+        val d = (screenH * 0.3f)
+        val y0 = (y - d / 2).coerceIn(10f, screenH - 10f)
+        val y1 = (y + d / 2).coerceIn(10f, screenH - 10f)
+        // Rulle opp = fingeren drar nedover
+        val p = Path().apply { if (up) { moveTo(x, y0); lineTo(x, y1) } else { moveTo(x, y1); lineTo(x, y0) } }
+        runCatching {
+            dispatchGesture(GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(p, 0, 220)).build(), null, null)
+        }
     }
 
     // ------------------------------------------------------------------ taster fra bilen
 
     override fun onKeyEvent(e: KeyEvent): Boolean {
-        if (!readerOn) return false
+        if (!readerOn || !wanted(this)) return false
         // Bilens Tab/Enter kommer uten ekte enhet (sendt av CarInfoService) – de blokkeres,
         // så markeringen ikke hopper. Tastatur og rattknapper slipper igjennom.
         if (e.keyCode == KeyEvent.KEYCODE_TAB) return true   // ingen tastatur i bilen: Tab kommer alltid fra joysticken
@@ -123,7 +190,6 @@ class JoyMouseService : AccessibilityService() {
     private fun start() {
         if (readerOn) return
         readerOn = true
-        addOverlay()
         reader = Thread({ readLoop() }, "carlink-joymouse").apply { isDaemon = true; start() }
     }
 
@@ -165,12 +231,14 @@ class JoyMouseService : AccessibilityService() {
         val b = IntArray(parts.size) { parts[it].toIntOrNull(16) ?: -1 }
         when {
             // Posisjon: 57 12 … byte 8 = 0x10, x i byte 12, y i byte 13
-            b[0] == 0x57 && b.size >= 14 && b[8] == 0x10 -> {
+            b[0] == 0x57 && b.size >= 14 && b[8] == 0x10 && wanted(this) -> {
                 lastFrameAt = SystemClock.elapsedRealtime()
                 onPosition(b[12], b[13])
             }
             // Trykk: 22 02 10 01 = ned, 22 02 10 00 = opp
-            b[0] == 0x22 && b.size >= 4 && b[2] == 0x10 &&
+            b[0] == 0x22 && b.size >= 4 && b[2] != 0x10 && b[2] != 0x81 && b[2] != 0x82 &&
+                SystemClock.elapsedRealtime() - readerStartedAt > 800 -> onCarButton(b[2], b[3])
+            b[0] == 0x22 && b.size >= 4 && b[2] == 0x10 && wanted(this) &&
                 SystemClock.elapsedRealtime() - readerStartedAt > 800 -> {
                 val down = b[3] == 1
                 main.post { onPress(down) }
