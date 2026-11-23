@@ -15,14 +15,20 @@ import kotlin.math.max
  */
 object LocalViz {
     private var viz: Visualizer? = null
+    /** Skjermen som eier målingen nå. Når skjermen bygges på nytt (f.eks. ny tekststørrelse),
+     *  skal den gamle ikke kunne slå av målingen den nye nettopp har startet. */
+    private var owner: Any? = null
     private var peakLow = 0.05f
     private var peakHigh = 0.05f
     private var silentSince = 0L
     @Volatile private var granting = false
 
     fun update(ctx: Context, active: Boolean) {
+        owner = ctx
         if (active) start(ctx) else stop()
     }
+
+    fun stop(from: Any) { if (owner === from) { stop(); owner = null } }
 
     private fun start(ctx: Context) {
         if (viz != null) return

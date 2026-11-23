@@ -166,7 +166,7 @@ class ReceiverActivity : AppCompatActivity() {
                     kotlinx.coroutines.flow.combine(Hub.connected, Hub.remoteMedia, Hub.localMedia) { c, r, l ->
                         l?.playing == true && !Hub.useRemote(c, r, l)
                     }.collect { LocalViz.update(this@ReceiverActivity, it) }
-                } finally { LocalViz.stop() }
+                } finally { LocalViz.stop(this@ReceiverActivity) }
             }
         }
         // Look for a new version at start and every 6 hours (a notification appears if there is one)

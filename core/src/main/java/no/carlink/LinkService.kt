@@ -656,7 +656,8 @@ class LinkService : Service() {
             val w = sock.getOutputStream().bufferedWriter()
             for (line in out) { w.write(line); w.newLine(); w.flush() }
         }
-        out.trySend(JSONObject().put("t", "hello").put("name", Build.MODEL).toString())
+        out.trySend(JSONObject().put("t", "hello").put("name", Build.MODEL)
+            .put("tz", java.util.TimeZone.getDefault().id).toString())
         main.removeCallbacks(pauseLater)
         if (!isSender) {
             // Skjermen bestemmer: send valget til telefonen, og start musikken der den sist spilte
@@ -703,9 +704,13 @@ class LinkService : Service() {
 
     private fun handle(o: JSONObject, isSender: Boolean) {
         when (o.optString("t")) {
-            "hello" -> o.optString("name").takeIf { it.isNotBlank() }?.let {
-                Hub.peerName.value = it
-                setStatus(if (isSender) "Connected to screen $it" else "Connected to phone $it")
+            "hello" -> {
+                o.optString("name").takeIf { it.isNotBlank() }?.let {
+                    Hub.peerName.value = it
+                    setStatus(if (isSender) "Connected to screen $it" else "Connected to phone $it")
+                }
+                // Bilskjermen bruker telefonens tidssone (den var satt til Kina fra fabrikken)
+                if (!isSender) o.optString("tz").takeIf { it.isNotBlank() }?.let { TimeZoneSync.apply(this, it) }
             }
             "cmd" -> if (isSender) MediaListener.control(o.optString("a"))
             "joylog" -> if (isSender) JoyLog.received(this, o.optString("name", "CarLink-joystick.txt"), o.optString("text"))
