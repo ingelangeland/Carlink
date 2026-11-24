@@ -218,7 +218,8 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
     private fun screen() {
         val b = Brightness.enabled(context)
         toggle("Automatic brightness", "Day level by day, night level after sunset – or when the car's lights are on after the time below", b) {
-            context.prefs().edit().putBoolean("brightAuto", it).apply(); if (it) Brightness.tick(context)
+            context.prefs().edit().putBoolean("brightAuto", it).apply()
+            if (it) Brightness.tick(context) else Brightness.takeOver(context, false)
             post { refresh() }
         }
         if (b) {

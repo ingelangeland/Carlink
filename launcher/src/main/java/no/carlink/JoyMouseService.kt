@@ -94,6 +94,16 @@ class JoyMouseService : AccessibilityService() {
         learn = JoyLearn(this)
         DayNight.onSystem(this, resources.configuration)
         main.postDelayed(brightTick, 3000)
+        // Bilens lys-signal (bilskjermens egen innstilling) – reager med en gang det endrer seg
+        runCatching {
+            contentResolver.registerContentObserver(android.provider.Settings.System.getUriFor("SETTING_SCREEN_ILL"), false,
+                object : android.database.ContentObserver(main) {
+                    override fun onChange(selfChange: Boolean) {
+                        AppLog.i("light", "car lights ${if (Brightness.carLights(this@JoyMouseService)) "on" else "off"}")
+                        Brightness.tick(this@JoyMouseService)
+                    }
+                })
+        }
         wm = getSystemService(WindowManager::class.java)
         prefs().registerOnSharedPreferenceChangeListener(prefListener)
         apply()
@@ -124,6 +134,33 @@ class JoyMouseService : AccessibilityService() {
         }.getOrDefault(emptySet())
     }
     private var homeRedirectAt = 0L
+    private var accOffAt = 0L
+    @Volatile private var accOnAt = 0L
+
+    /** Like etter at bilen er slått på (eller tjenesten nettopp startet). */
+    private fun justStarted(): Boolean {
+        val now = SystemClock.uptimeMillis()
+        return (accOnAt > 0 && now - accOnAt < 45_000) || now - serviceStartedAt < 45_000
+    }
+    private var serviceStartedAt = SystemClock.uptimeMillis()
+
+    /**
+     * Bilskjermen viser bilens eget bilde når bilen slås på. La det stå noen sekunder (bilens egen
+     * oppstartsskjerm), og vis så CarLink – med mindre du selv har bedt om bilens system (dobbeltklikk).
+     */
+    private fun startupCarSystem() {
+        if (!justStarted() || !prefs().getBoolean("replaceFactoryHome", true)) return
+        if (SystemClock.elapsedRealtime() < allowCarUntil) return
+        main.postDelayed({
+            if (currentPkg == CAR_SYSTEM && SystemClock.elapsedRealtime() >= allowCarUntil) {
+                AppLog.i("app", "car system at startup – showing CarLink")
+                runCatching {
+                    startActivity(android.content.Intent(this, ReceiverActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+                }
+            }
+        }, 4000)
+    }
 
     private fun otherHomeShown(pkg: String) {
         if (!prefs().getBoolean("replaceFactoryHome", true)) return
@@ -147,7 +184,10 @@ class JoyMouseService : AccessibilityService() {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = event.packageName?.toString()
             if (pkg == CAR_SYSTEM) carSystemShown()
+            if (pkg == "com.spd.screen.saver") { accOffAt = SystemClock.uptimeMillis(); accOnAt = 0L }
+            else if (pkg != null && accOffAt > 0 && accOnAt == 0L) { accOnAt = SystemClock.uptimeMillis(); AppLog.i("app", "car switched on (first: $pkg)") }
             if (pkg != null && pkg in otherHomes) otherHomeShown(pkg)
+            if (pkg == CAR_SYSTEM) startupCarSystem()
             if (pkg != null && pkg != "com.android.systemui" && pkg != packageName + ".none") currentPkg = pkg
         }
     }

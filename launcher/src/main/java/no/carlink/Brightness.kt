@@ -33,14 +33,44 @@ object Brightness {
             System.currentTimeMillis()) < -3.0
         if (sunDown) return true
         val after = lightsAfter(ctx)
-        if (after < 0 || DayNight.systemNight != true) return false
+        if (after < 0 || !carLights(ctx)) return false
         val c = Calendar.getInstance()
         return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE) >= after
     }
 
+    /** Bilens lys-signal: bilskjermens egen innstilling (1 = lys på), eller Androids nattmodus-flagg. */
+    fun carLights(ctx: Context): Boolean =
+        runCatching { Settings.System.getInt(ctx.contentResolver, "SETTING_SCREEN_ILL", -1) }.getOrDefault(-1) == 1 ||
+            DayNight.systemNight == true
+
+    /**
+     * Bilskjermen har sin egen nedre grense (140 av 255) og demper selv om natta. Mens automatisk
+     * lysstyrke er på, senkes grensen og den egne dempingen slås av (verdiene huskes og settes tilbake).
+     */
+    fun takeOver(ctx: Context, on: Boolean) {
+        val p = ctx.prefs()
+        Thread {
+            if (on) {
+                if (!p.contains("vendorBrightMin")) {
+                    val min = Root.run("settings get system SETTING_SCREEN_BRIGHTNESS_MIN")?.lines()?.lastOrNull { it.isNotBlank() }?.trim()
+                    val dec = Root.run("settings get system SETTING_SCREEN_BRIGHTNESS_NIGHT_DECLINE")?.lines()?.lastOrNull { it.isNotBlank() }?.trim()
+                    p.edit().putString("vendorBrightMin", min ?: "140").putString("vendorNightDecline", dec ?: "50").apply()
+                }
+                Root.run("settings put system SETTING_SCREEN_BRIGHTNESS_MIN 3\nsettings put system SETTING_SCREEN_BRIGHTNESS_NIGHT_DECLINE 0")
+            } else if (p.contains("vendorBrightMin")) {
+                Root.run("settings put system SETTING_SCREEN_BRIGHTNESS_MIN ${p.getString("vendorBrightMin", "140")}\n" +
+                    "settings put system SETTING_SCREEN_BRIGHTNESS_NIGHT_DECLINE ${p.getString("vendorNightDecline", "50")}")
+                p.edit().remove("vendorBrightMin").remove("vendorNightDecline").apply()
+            }
+        }.start()
+    }
+
     /** Kalles hvert minutt og når bilens lys-signal endrer seg. */
+    private var tookOver = false
+
     fun tick(ctx: Context) {
         if (!enabled(ctx) || paused) return
+        if (!tookOver) { tookOver = true; takeOver(ctx, true) }
         val night = isNight(ctx)
         if (night != lastNight) { AppLog.i("light", if (night) "night level" else "day level"); lastNight = night }
         setPercent(ctx, if (night) nightLevel(ctx) else dayLevel(ctx))

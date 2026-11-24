@@ -60,11 +60,16 @@ object SystemFix {
             // Bilskjermens egen hovedapp (com.spd.home) styrer oppstarten og byttet fra bilens bilde til
             // Android – den skal ALDRI slås av. Slå den på igjen hvis en tidligere versjon slo den av.
             val keep = listOf("com.spd.home")
-            Root.run(keep.joinToString("\n") { "pm enable $it" })
+            // Bilskjermen starter fabrikkens hjemmeskjerm direkte når bilen slås på; mangler den, blir
+            // bilens eget bilde stående. Derfor slås ingen hjemmeskjerm av lenger – CarLink tar over i stedet.
+            val earlier = (ctx.prefs().getString("disabledHomes", "") ?: "").split(',').filter { it.isNotBlank() }
+            Root.run((keep + earlier + "com.android.launcher3").distinct().joinToString("\n") { "pm enable $it" } +
+                "\npm set-home-activity $pkg/no.carlink.ReceiverActivity")
+            ctx.prefs().edit().putBoolean("disableFactoryHome", false).putString("disabledHomes", "").apply()
             ctx.prefs().getString("disabledHomes", "")?.let { d ->
                 ctx.prefs().edit().putString("disabledHomes", d.split(',').filter { it.isNotBlank() && it !in keep }.joinToString(",")).apply()
             }
-            if (ctx.prefs().getBoolean("disableFactoryHome", true)) {
+            if (ctx.prefs().getBoolean("disableFactoryHome", false)) {
                 val homes = runCatching {
                     ctx.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
                         .map { it.activityInfo.packageName }
