@@ -175,6 +175,9 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             context.prefs().edit().putBoolean("carHomeOnly", it).apply()
             if (it) host.joyMouseChanged(context.prefs().getBoolean("joyMouse", false))
         }
+        MenuButton.Press.entries.forEach { p ->
+            action(p.title, MenuButton.label(context, MenuButton.get(context, p))) { pickMenuAction(p) }
+        }
         if (mouse) choice("Snap to buttons", "The dot is pulled towards the nearest thing you can tap",
             listOf("Off", "Light", "Strong"), context.prefs().getInt("joySnap", 1)) {
             context.prefs().edit().putInt("joySnap", it).apply()
@@ -351,6 +354,22 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { rightMargin = 8.dp })
         }
         r.addView(chips)
+    }
+
+    /** Velg hva Meny-knappen skal gjøre: en CarLink-funksjon eller en app. */
+    private fun pickMenuAction(p: MenuButton.Press) {
+        val keys = MenuButton.functions.keys.toList() + "app"
+        val names = MenuButton.functions.values.toList() + "An app …"
+        android.app.AlertDialog.Builder(context).setTitle(p.title)
+            .setItems(names.toTypedArray()) { _, i ->
+                if (keys[i] == "app") {
+                    val apps = AppCatalog.apps.value
+                    android.app.AlertDialog.Builder(context).setTitle("Choose an app")
+                        .setItems(apps.map { it.label }.toTypedArray()) { _, j ->
+                            MenuButton.set(context, p, "app:" + apps[j].component.packageName); build()
+                        }.show()
+                } else { MenuButton.set(context, p, keys[i]); build() }
+            }.show()
     }
 
     private fun action(title: String, sub: String?, run: () -> Unit) {

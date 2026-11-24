@@ -256,6 +256,7 @@ class JoyMouseService : AccessibilityService() {
     private fun onCarButton(code: Int, state: Int) {
         val now = SystemClock.elapsedRealtime()
         when (code) {
+            0x2a -> if (black != null) main.post { hideBlack() } else onMenu(state)
             0x32, 0x33 -> {
                 scrollKeyAt = now
                 if (state == 1 && wanted(this)) main.post { scrollAtDot(up = code == 0x32) }
@@ -277,6 +278,42 @@ class JoyMouseService : AccessibilityService() {
                         // Bilen sender «Hjem» når knappen slippes – åpne bilens system rett etter
                         main.postDelayed({ openCarSystem() }, 350)
                     }
+                }
+            }
+        }
+    }
+
+    /** Bilens system på forespørsel (Meny-knappen). */
+    fun openCarSystemNow() {
+        allowCarUntil = SystemClock.elapsedRealtime() + 6000
+        openCarSystem()
+    }
+
+    // ---- Meny-knappen (0x2a): kort, to trykk eller hold
+    private var menuDownAt = 0L
+    private var menuLongFired = false
+    private var menuUpAt = 0L
+    private val menuShort = Runnable { menuUpAt = 0L; MenuButton.run(this, MenuButton.get(this, MenuButton.Press.SHORT), this) }
+
+    private fun onMenu(state: Int) {
+        val now = SystemClock.elapsedRealtime()
+        when (state) {
+            1 -> { menuDownAt = now; menuLongFired = false }
+            2 -> if (!menuLongFired) { menuLongFired = true; main.post { MenuButton.run(this, MenuButton.get(this, MenuButton.Press.LONG), this) } }
+            0 -> {
+                if (menuLongFired) return
+                if (menuDownAt > 0 && now - menuDownAt > 650) {            // holdt inne uten eget «holdes»-signal
+                    main.post { MenuButton.run(this, MenuButton.get(this, MenuButton.Press.LONG), this) }; return
+                }
+                val doubleAction = MenuButton.get(this, MenuButton.Press.DOUBLE)
+                if (menuUpAt > 0 && now - menuUpAt < 450) {
+                    main.removeCallbacks(menuShort); menuUpAt = 0L
+                    main.post { MenuButton.run(this, doubleAction, this) }
+                } else if (doubleAction == "none") {
+                    main.post(menuShort)                                     // ingen dobbelt: ingen venting
+                } else {
+                    menuUpAt = now
+                    main.postDelayed(menuShort, 450)
                 }
             }
         }

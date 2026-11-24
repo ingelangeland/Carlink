@@ -446,6 +446,7 @@ class ReceiverActivity : AppCompatActivity() {
         val show = i.getStringExtra("show") ?: return
         DemoFeeder.showNav = show == "nav"
         if (show != "drawer" && ::drawer.isInitialized) drawer.close(immediate = true)
+        if (show != "recents" && ::recents.isInitialized) recents.close(immediate = true)
         if (show != "menu" && ::settings.isInitialized) settings.close(immediate = true)
         when (show) {
             "home", "nav" -> showHome()
@@ -455,6 +456,7 @@ class ReceiverActivity : AppCompatActivity() {
             "music" -> setLayout(listOf(PaneType.MUSIC))
             "apps" -> setLayout(listOf(PaneType.APPS))
             "drawer" -> { showHome(); drawer.open() }
+            "recents" -> { showHome(); recents.open() }
             "menu" -> { showHome(); i.getStringExtra("menupage")?.let { settings.showPage(it) }; settings.open() }
             "joystick" -> startActivity(Intent(this, JoystickActivity::class.java))
         }
