@@ -223,17 +223,17 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         }
         if (b) {
             val day = intArrayOf(100, 90, 80, 70, 60, 50)
-            choice("Day level", null, day.map { "$it %" }, day.indexOf(Brightness.dayLevel(context)).coerceAtLeast(1)) {
+            choice("Day level", null, day.map { "$it %" }, day.indexOf(Brightness.dayLevel(context)).let { if (it < 0) 1 else it }) {
                 context.prefs().edit().putInt("brightDay", day[it]).apply(); Brightness.tick(context)
             }
             val night = intArrayOf(40, 30, 20, 15, 10, 5)
-            choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).coerceAtLeast(3)) {
+            choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).let { if (it < 0) 3 else it }) {
                 context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.tick(context)
             }
             val times = intArrayOf(-1, 13 * 60, 14 * 60, 15 * 60, 16 * 60, 17 * 60, 18 * 60)
             choice("Car lights mean night after", "The car always has its lights on in Norway, so the signal only counts after this time",
                 listOf("Never", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"),
-                times.indexOf(Brightness.lightsAfter(context)).coerceAtLeast(0)) {
+                times.indexOf(Brightness.lightsAfter(context)).let { if (it < 0) 3 else it }) {
                 context.prefs().edit().putInt("brightLightsAfter", times[it]).apply(); Brightness.tick(context)
             }
         }

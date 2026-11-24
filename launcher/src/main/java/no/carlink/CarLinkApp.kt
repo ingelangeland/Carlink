@@ -8,6 +8,8 @@ class CarLinkApp : Application() {
         super.onCreate()
         Configuration.getInstance().load(this, prefs())
         Configuration.getInstance().userAgentValue = packageName
+        AppLog.init(this)
+        SystemFix.installCrashGuard(this)
         AppCatalog.start(this)
         Updater.apkName = "CarLink-bilskjerm.apk"
     }
