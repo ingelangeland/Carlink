@@ -232,11 +232,11 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).let { if (it < 0) 3 else it }) {
                 context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.preview(context, night[it])
             }
-            val times = intArrayOf(-1, 13 * 60, 14 * 60, 15 * 60, 16 * 60, 17 * 60, 18 * 60)
-            choice("Car lights mean night after", "The car always has its lights on in Norway, so the signal only counts after this time",
-                listOf("Never", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"),
-                times.indexOf(Brightness.lightsAfter(context)).let { if (it < 0) 3 else it }) {
-                context.prefs().edit().putInt("brightLightsAfter", times[it]).apply(); Brightness.tick(context)
+            val times = intArrayOf(0, 13 * 60, 15 * 60, 17 * 60, -1)
+            choice("Car lights give the night level", "When the car's headlights are on – always, or only after a time of day",
+                listOf("Always", "After 13:00", "After 15:00", "After 17:00", "Never"),
+                times.indexOf(Brightness.lightsAfter(context)).let { if (it < 0) 0 else it }) {
+                context.prefs().edit().putInt("brightLightsAfter2", times[it]).apply(); Brightness.tick(context)
             }
         }
         choice("Size of text and buttons", null, UiScale.labels.toList(),

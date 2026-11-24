@@ -25,7 +25,7 @@ object Brightness {
     fun dayLevel(ctx: Context) = ctx.prefs().getInt("brightDay", 90)
     fun nightLevel(ctx: Context) = ctx.prefs().getInt("brightNight", 15)
     /** Minutter etter midnatt; -1 = bilens signal brukes ikke. */
-    fun lightsAfter(ctx: Context) = ctx.prefs().getInt("brightLightsAfter", 15 * 60)
+    fun lightsAfter(ctx: Context) = ctx.prefs().getInt("brightLightsAfter2", 0)   // 0 = alltid
 
     fun isNight(ctx: Context): Boolean {
         val p = ctx.prefs()
