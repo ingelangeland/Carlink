@@ -249,6 +249,14 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             CarIntro.choices.map { if (it == 0) "Off" else "$it s" }, CarIntro.choices.indexOf(CarIntro.seconds(context)).let { if (it < 0) 2 else it }) {
             context.prefs().edit().putInt("introSecs", CarIntro.choices[it]).apply()
         }
+        // Bilskjermens eget klimapanel (dukker opp ved endringer i klimaanlegget). Dør-varselet er en egen innstilling og røres ikke.
+        val airOn = runCatching { android.provider.Settings.System.getInt(context.contentResolver, "SETTING_FACTORY_AIR") }.getOrDefault(1) != 0
+        choice("Climate pop-up", "The car screen's own climate panel. Open-door warnings are always shown",
+            listOf("Show", "Hide"), if (airOn) 0 else 1) {
+            val v = if (it == 0) 1 else 0
+            AppLog.i("app", "climate pop-up ${if (v == 1) "shown" else "hidden"}")
+            Thread { Root.run("settings put system SETTING_FACTORY_AIR $v") }.start()
+        }
         choice("Size of text and buttons", null, UiScale.labels.toList(),
             UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
             context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()
