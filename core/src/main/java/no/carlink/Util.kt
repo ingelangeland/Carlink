@@ -100,3 +100,14 @@ object Perms {
 fun android.graphics.drawable.GradientDrawable.setColorsAt(colors: IntArray, offsets: FloatArray) {
     if (Build.VERSION.SDK_INT >= 29) setColors(colors, offsets) else setColors(colors)
 }
+
+
+/** Process.waitFor med tidsgrense, også på Android 7 (der den innebygde mangler). */
+fun Process.waitSeconds(seconds: Long): Boolean {
+    if (Build.VERSION.SDK_INT >= 26) return waitFor(seconds, java.util.concurrent.TimeUnit.SECONDS)
+    val end = System.currentTimeMillis() + seconds * 1000
+    while (System.currentTimeMillis() < end) {
+        try { exitValue(); return true } catch (_: IllegalThreadStateException) { Thread.sleep(50) }
+    }
+    return false
+}

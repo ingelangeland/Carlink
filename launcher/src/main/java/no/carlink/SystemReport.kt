@@ -150,7 +150,7 @@ object SystemReport {
     /** Kjører en kommando med tidsgrense (så en hengende «su» ikke låser appen). */
     private fun run(vararg cmd: String): String = runCatching {
         val p = ProcessBuilder(*cmd).redirectErrorStream(true).start()
-        if (!p.waitFor(6, TimeUnit.SECONDS)) { p.destroy(); return@runCatching "timeout" }
+        if (!p.waitSeconds(6.toLong())) { p.destroy(); return@runCatching "timeout" }
         p.inputStream.bufferedReader().readText().trim().take(300).ifEmpty { "(exit ${p.exitValue()})" }
     }.getOrElse { "not available (${it.javaClass.simpleName})" }
 }

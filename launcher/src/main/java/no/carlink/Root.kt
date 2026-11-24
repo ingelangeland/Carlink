@@ -10,7 +10,7 @@ object Root {
         val out = StringBuilder()
         val reader = Thread { runCatching { p.inputStream.bufferedReader().use { r -> out.append(r.readText()) } } }.apply { start() }
         p.outputStream.bufferedWriter().use { it.write(script); it.write("\nexit\n") }
-        if (!p.waitFor(timeoutS, TimeUnit.SECONDS)) { p.destroy(); AppLog.i("root", "timeout: ${script.lines().first().take(60)}"); return@runCatching null }
+        if (!p.waitSeconds(timeoutS.toLong())) { p.destroy(); AppLog.i("root", "timeout: ${script.lines().first().take(60)}"); return@runCatching null }
         reader.join(2000)
         out.toString()
     }.getOrNull()

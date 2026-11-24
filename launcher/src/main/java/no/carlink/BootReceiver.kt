@@ -22,80 +22,38 @@ class BootReceiver : BroadcastReceiver() {
 
 /** Små rettelser i bilskjermens oppsett som krever root. Kjøres i bakgrunnen, høyst én gang per oppstart. */
 object SystemFix {
-    /**
-     * Sikkerhetsnett: krasjer CarLink 3 ganger på 2 minutter, slås fabrikkens hjemmeskjerm på igjen,
-     * så bilskjermen aldri står uten hjemmeskjerm. Kjøres før appen avsluttes.
-     */
-    fun installCrashGuard(ctx: Context) {
-        val prev = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { t, e ->
-            runCatching {
-                val p = ctx.prefs()
-                val now = System.currentTimeMillis()
-                val times = (p.getString("crashTimes", "") ?: "").split(',').mapNotNull { it.toLongOrNull() }
-                    .filter { now - it < 120_000 } + now
-                p.edit().putString("crashTimes", times.joinToString(",")).commit()
-                val homes = p.getString("disabledHomes", "") ?: ""
-                if (times.size >= 3 && homes.isNotBlank()) {
-                    p.edit().putBoolean("disableFactoryHome", false).putString("disabledHomes", "").commit()
-                    val proc = ProcessBuilder("su", "-c", "sh").start()
-                    proc.outputStream.bufferedWriter().use { w -> homes.split(',').forEach { w.write("pm enable $it\n") }; w.write("exit\n") }
-                    proc.waitFor()
-                }
-            }
-            prev?.uncaughtException(t, e)
-        }
-    }
-
     @Volatile private var done = false
 
+    /**
+     * Alt i én root-kommando (raskere oppstart):
+     *  - bilskjermens egne hjemmeskjermer skal være PÅ (com.spd.home styrer oppstarten; Launcher3 startes
+     *    direkte når bilen slås på – CarLink tar over etterpå) – rydder opp etter en tidligere versjon
+     *  - CarLink er valgt hjemmeskjerm og står i skjermens «start ved oppstart»
+     *  - logger hva som vises nå, og (én gang) hvilket signal som starter ZLink når bilen slås på
+     */
     fun apply(ctx: Context) {
         if (done) return
         done = true
         val pkg = ctx.packageName
+        val p = ctx.prefs()
+        val probe = !p.getBoolean("accProbeDone", false)
         Thread {
-            // Skjermens eget «start denne appen ved oppstart» → CarLink
-            // Fabrikkens hjemmeskjerm av, så bilskjermen bare har CarLink å starte når bilen slås på
-            // (bilskjermen avslutter alle apper når bilen slås av). Slås på igjen ved krasj-løkke.
-            // Bilskjermens egen hovedapp (com.spd.home) styrer oppstarten og byttet fra bilens bilde til
-            // Android – den skal ALDRI slås av. Slå den på igjen hvis en tidligere versjon slo den av.
-            val keep = listOf("com.spd.home")
-            // Bilskjermen starter fabrikkens hjemmeskjerm direkte når bilen slås på; mangler den, blir
-            // bilens eget bilde stående. Derfor slås ingen hjemmeskjerm av lenger – CarLink tar over i stedet.
-            val earlier = (ctx.prefs().getString("disabledHomes", "") ?: "").split(',').filter { it.isNotBlank() }
-            Root.run((keep + earlier + "com.android.launcher3").distinct().joinToString("\n") { "pm enable $it" } +
-                "\npm set-home-activity $pkg/no.carlink.ReceiverActivity")
-            ctx.prefs().edit().putBoolean("disableFactoryHome", false).putString("disabledHomes", "").apply()
-            ctx.prefs().getString("disabledHomes", "")?.let { d ->
-                ctx.prefs().edit().putString("disabledHomes", d.split(',').filter { it.isNotBlank() && it !in keep }.joinToString(",")).apply()
+            val out = Root.run(buildString {
+                append("pm enable com.spd.home >/dev/null 2>&1\n")
+                if (!p.getBoolean("homesRestored", false)) append("pm enable com.android.launcher3 >/dev/null 2>&1\n")
+                append("pm set-home-activity $pkg/no.carlink.ReceiverActivity >/dev/null 2>&1\n")
+                append("[ \"$(settings get system SETTING_LUNCH_FIRST_APP)\" = \"$pkg\" ] || { settings put system SETTING_LUNCH_FIRST_APP $pkg; echo LAUNCH_CHANGED; }\n")
+                append("echo TOP; dumpsys activity activities | grep -m 2 mResumedActivity\n")
+                if (probe) append("echo ZLINK; dumpsys package com.zjinnova.zlink | grep -B2 -A8 StartupBroadcastReceiver | head -30\n")
+            }, 30) ?: return@Thread
+            p.edit().putBoolean("homesRestored", true).remove("disableFactoryHome").remove("disabledHomes").remove("crashTimes").apply()
+            if ("LAUNCH_CHANGED" in out) AppLog.i("app", "screen's startup app set to CarLink")
+            out.substringAfter("TOP", "").substringBefore("ZLINK").lines().firstOrNull { "Activity" in it }?.let {
+                AppLog.i("app", "in front at start: ${it.trim().take(200)}")
             }
-            if (ctx.prefs().getBoolean("disableFactoryHome", false)) {
-                val homes = runCatching {
-                    ctx.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
-                        .map { it.activityInfo.packageName }
-                        .filter { it != pkg && it != "com.android.settings" && it !in keep && !it.startsWith("com.spd.") }.distinct()
-                }.getOrDefault(emptyList())
-                if (homes.isNotEmpty()) {
-                    Root.run(homes.joinToString("\n") { "pm disable $it" } + "\npm set-home-activity $pkg/no.carlink.ReceiverActivity")
-                    ctx.prefs().edit().putString("disabledHomes", homes.joinToString(",")).apply()
-                    AppLog.i("app", "factory home switched off: ${homes.joinToString()}")
-                }
-            }
-            // Hvilket signal sender bilskjermen når bilen slås på? (ZLink starts av det – CarLink kan bruke det samme)
-            if (!ctx.prefs().getBoolean("accProbeDone", false)) {
-                Root.run("dumpsys package com.zjinnova.zlink | grep -B2 -A8 StartupBroadcastReceiver | head -40", 30)?.let {
-                    AppLog.i("app", "zlink startup receiver:\n" + it.lines().filter { l -> l.isNotBlank() }.take(30).joinToString("\n"))
-                    ctx.prefs().edit().putBoolean("accProbeDone", true).apply()
-                }
-            }
-            // Hva vises når CarLink starter? (hjelper å forstå oppstarten)
-            Root.run("dumpsys activity activities | grep -m 3 -E 'mResumedActivity|mFocusedActivity'")?.let { top ->
-                AppLog.i("app", "in front at start: " + top.lines().filter { "Activity" in it }.joinToString(" | ") { it.trim() }.take(300))
-            }
-            val cur = Root.run("settings get system SETTING_LUNCH_FIRST_APP")?.lines()?.lastOrNull { it.isNotBlank() }?.trim()
-            if (cur != null && cur != pkg) {
-                Root.run("settings put system SETTING_LUNCH_FIRST_APP $pkg")
-                AppLog.i("app", "startup app changed from $cur to $pkg")
+            if (probe && "ZLINK" in out) {
+                AppLog.i("app", "zlink startup receiver:\n" + out.substringAfter("ZLINK").lines().filter { it.isNotBlank() }.take(25).joinToString("\n"))
+                p.edit().putBoolean("accProbeDone", true).apply()
             }
         }.start()
     }
@@ -105,7 +63,7 @@ object SystemFix {
         val wanted = ctx.prefs().getBoolean("joyMouse", false) || JoyMouseService.homeOnly(ctx)
         if (!wanted || JoyMouseService.running()) return
         Thread {
-            Thread.sleep(3000)
+            Thread.sleep(1500)
             if (JoyMouseService.running()) return@Thread   // koblet til mens vi ventet
             val c = JoyMouseService.COMPONENT
             val d = "$"
@@ -113,7 +71,7 @@ object SystemFix {
             Root.run("""
                 cur=${d}(settings get secure enabled_accessibility_services | sed 's#$c##g; s#::#:#g; s#^:##; s#:${d}##')
                 if [ -z "${d}cur" ] || [ "${d}cur" = "null" ]; then settings put secure enabled_accessibility_services $c
-                else settings put secure enabled_accessibility_services "${d}cur"; sleep 1; settings put secure enabled_accessibility_services "${d}cur:$c"; fi
+                else settings put secure enabled_accessibility_services "${d}cur"; sleep 0.3; settings put secure enabled_accessibility_services "${d}cur:$c"; fi
                 settings put secure accessibility_enabled 1
             """.trimIndent())
             AppLog.i("joystick", "mouse service was not running – re-enabled")

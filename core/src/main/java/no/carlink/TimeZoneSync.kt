@@ -20,7 +20,7 @@ object TimeZoneSync {
                     // IAlarmManager.setTimeZone (Android 9: kode 3) + egenskapen som leses ved oppstart
                     it.write("service call alarm 3 s16 $zone\nsetprop persist.sys.timezone $zone\nsettings put global auto_time_zone 0\nexit\n")
                 }
-                p.waitFor(8, TimeUnit.SECONDS)
+                p.waitSeconds(8.toLong())
             }
         }.start()
     }

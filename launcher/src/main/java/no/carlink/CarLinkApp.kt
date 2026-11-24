@@ -9,10 +9,9 @@ class CarLinkApp : Application() {
         Configuration.getInstance().load(this, prefs())
         Configuration.getInstance().userAgentValue = packageName
         AppLog.init(this)
-        SystemFix.installCrashGuard(this)
         // Bilskjermen tvangsavslutter CarLink når bilen slås av; Android starter den igjen kort etter
         // (musikk-lytteren). Få musestyringen og oppstartsvakten i gang med en gang, før bilen slås på.
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ SystemFix.healJoystick(this) }, 1500)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ SystemFix.healJoystick(this) }, 500)
         AppCatalog.start(this)
         Updater.apkName = "CarLink-bilskjerm.apk"
     }
