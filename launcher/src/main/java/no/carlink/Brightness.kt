@@ -86,7 +86,14 @@ object Brightness {
     fun setPercent(ctx: Context, pct: Int) {
         ensurePermission(ctx)
         target = (pct.coerceIn(1, 100) * 255 / 100).coerceIn(3, 255)
-        if (current < 0) current = runCatching { Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS) }.getOrDefault(target)
+        if (current < 0) {
+            current = runCatching { Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS) }.getOrDefault(target)
+            // Første gang etter oppstart: bilskjermen kan ha satt skjermlyset selv (mørkt) uten å endre
+            // Androids verdi. Skriv verdien på nytt (litt av og så på) så lyset faktisk settes.
+            val v = current
+            write(ctx, (v - 2).coerceAtLeast(1)); write(ctx, v)
+            AppLog.i("light", "start: brightness $v → target $target")
+        }
         main.removeCallbacksAndMessages(this)
         step(ctx.applicationContext)
     }
