@@ -131,6 +131,7 @@ class ReceiverActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        window.decorView.postDelayed({ SystemFix.healJoystick(this) }, 6000)
         applySystemBars()
         // Neste manglende tillatelse (etter at Androids egne spørsmål er besvart)
         if (Perms.missing(this, Perms.forRole(false)).isEmpty()) guide.next()
@@ -150,6 +151,7 @@ class ReceiverActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLog.init(this)
+        SystemFix.apply(this)
         DebugFlags.noVisualizer = intent?.getBooleanExtra("noviz", false) == true
         DebugFlags.noArt = intent?.getBooleanExtra("noart", false) == true
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
