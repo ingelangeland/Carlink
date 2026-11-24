@@ -24,18 +24,25 @@ object Brightness {
     fun enabled(ctx: Context) = ctx.prefs().getBoolean("brightAuto", false)
     fun dayLevel(ctx: Context) = ctx.prefs().getInt("brightDay", 90)
     fun nightLevel(ctx: Context) = ctx.prefs().getInt("brightNight", 15)
-    /** Minutter etter midnatt; -1 = bilens signal brukes ikke. */
-    fun lightsAfter(ctx: Context) = ctx.prefs().getInt("brightLightsAfter2", 15 * 60)   // 0 = alltid, -1 = aldri
+
+    /** Når bilens lys får gi nattnivå: 0 = lav sol (under 10°), 1 = skumring (under 3°), 2 = alltid, 3 = aldri. */
+    fun lightsRule(ctx: Context) = ctx.prefs().getInt("brightLightsSun", 0)
+
+    private fun sunElevation(ctx: Context): Double {
+        val p = ctx.prefs()
+        return DayNight.sunElevation(p.getFloat("lastLat", 59.91f).toDouble(), p.getFloat("lastLon", 10.75f).toDouble(), System.currentTimeMillis())
+    }
 
     fun isNight(ctx: Context): Boolean {
-        val p = ctx.prefs()
-        val sunDown = DayNight.sunElevation(p.getFloat("lastLat", 59.91f).toDouble(), p.getFloat("lastLon", 10.75f).toDouble(),
-            System.currentTimeMillis()) < -3.0
-        if (sunDown) return true
-        val after = lightsAfter(ctx)
-        if (after < 0 || !carLights(ctx)) return false
-        val c = Calendar.getInstance()
-        return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE) >= after
+        val sun = sunElevation(ctx)
+        if (sun < -3.0) return true                       // sola har gått ned
+        if (!carLights(ctx)) return false
+        return when (lightsRule(ctx)) {
+            0 -> sun < 10.0                               // lav sol: ettermiddag, skumring, vinterdager
+            1 -> sun < 3.0                                // skumring
+            2 -> true
+            else -> false
+        }
     }
 
     /** Bilens lys-signal: bilskjermens egen innstilling (1 = lys på), eller Androids nattmodus-flagg. */
@@ -129,11 +136,10 @@ object Brightness {
     fun status(ctx: Context): String {
         val night = isNight(ctx)
         val lights = carLights(ctx)
-        val after = lightsAfter(ctx)
         val why = when {
             night && !lights -> "after sunset"
-            night -> "car lights on"
-            lights && after >= 0 -> "car lights on, but before %02d:%02d".format(after / 60, after % 60)
+            night -> "car lights on, sun is low"
+            lights && lightsRule(ctx) != 3 -> "car lights on, but the sun is still high (%.0f°)".format(sunElevation(ctx))
             else -> "daytime"
         }
         return "Now: ${if (night) "night" else "day"} level ($why)"
