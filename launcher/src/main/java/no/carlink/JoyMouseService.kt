@@ -41,7 +41,7 @@ class JoyMouseService : AccessibilityService() {
         @Volatile var lastFrameAt = 0L
         const val CAR_SYSTEM = "com.spd.xhsntg"
         fun wanted(ctx: Context) = ctx.prefs().getBoolean("joyMouse", false)
-        /** Bilens eget system bare ved langt trykk på Hjem (scrolleknappene ruller i stedet). */
+        /** Bilens eget system bare ved dobbeltklikk på Hjem (scrolleknappene ruller i stedet). */
         fun homeOnly(ctx: Context) = ctx.prefs().getBoolean("carHomeOnly", true)
         fun running() = instance != null
     }
@@ -155,7 +155,8 @@ class JoyMouseService : AccessibilityService() {
 
     @Volatile private var scrollKeyAt = 0L
     @Volatile private var allowCarUntil = 0L
-    private var homeLong = false
+    private var homeUpAt = 0L
+    private var homeFirstPkg: String? = null
 
     /** Scrolleknappen (0x32 opp / 0x33 ned) og Hjem (0x34: 1 ned, 2 holdes, 0 slipp). */
     private fun onCarButton(code: Int, state: Int) {
@@ -165,14 +166,23 @@ class JoyMouseService : AccessibilityService() {
                 scrollKeyAt = now
                 if (state == 1 && wanted(this)) main.post { scrollAtDot(up = code == 0x32) }
             }
-            0x34 -> when (state) {
-                1 -> homeLong = false
-                2 -> homeLong = true
-                0 -> if (homeLong) {
-                    homeLong = false
-                    allowCarUntil = now + 6000
-                    // Bilen sender «Hjem» når knappen slippes – åpne bilens system rett etter
-                    main.postDelayed({ openCarSystem() }, 600)
+            // Hjem: dobbeltklikk (to slipp innen 0,5 s) bytter mellom Android og bilens system
+            0x34 -> if (state == 0) {
+                val gap = now - homeUpAt
+                if (homeUpAt == 0L || gap > 500) {
+                    homeUpAt = now
+                    homeFirstPkg = currentPkg
+                } else {
+                    homeUpAt = 0L
+                    if (homeFirstPkg == CAR_SYSTEM) {
+                        AppLog.i("joystick", "double Home in car system → Android")   // første trykk ga allerede Hjem
+                        main.post { performGlobalAction(GLOBAL_ACTION_HOME) }      // i tilfelle bilen ikke sendte Hjem
+                    } else {
+                        AppLog.i("joystick", "double Home → car system")
+                        allowCarUntil = now + 6000
+                        // Bilen sender «Hjem» når knappen slippes – åpne bilens system rett etter
+                        main.postDelayed({ openCarSystem() }, 350)
+                    }
                 }
             }
         }
