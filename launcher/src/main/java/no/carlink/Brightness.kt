@@ -25,7 +25,7 @@ object Brightness {
     fun nightLevel(ctx: Context) = ctx.prefs().getInt("brightNight", 15)
 
     /** Minutter etter solnedgang før det alltid er nattnivå (15/30/45/60). */
-    fun nightAfter(ctx: Context) = ctx.prefs().getInt("brightNightAfter", 30)
+    fun nightAfter(ctx: Context) = ctx.prefs().getInt("brightNightAfter", 30).coerceAtLeast(30)
     /** Mellom solnedgang og nattgrensen: får bilens lys gi nattnivå? */
     fun lightsAfterSunset(ctx: Context) = ctx.prefs().getBoolean("brightLightsAfterSunset", true)
 
