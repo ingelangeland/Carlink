@@ -81,6 +81,13 @@ object SystemFix {
                     AppLog.i("app", "factory home switched off: ${homes.joinToString()}")
                 }
             }
+            // Hvilket signal sender bilskjermen når bilen slås på? (ZLink starts av det – CarLink kan bruke det samme)
+            if (!ctx.prefs().getBoolean("accProbeDone", false)) {
+                Root.run("dumpsys package com.zjinnova.zlink | grep -B2 -A8 StartupBroadcastReceiver | head -40")?.let {
+                    AppLog.i("app", "zlink startup receiver:\n" + it.lines().filter { l -> l.isNotBlank() }.take(30).joinToString("\n"))
+                    ctx.prefs().edit().putBoolean("accProbeDone", true).apply()
+                }
+            }
             // Hva vises når CarLink starter? (hjelper å forstå oppstarten)
             Root.run("dumpsys activity activities | grep -m 3 -E 'mResumedActivity|mFocusedActivity'")?.let { top ->
                 AppLog.i("app", "in front at start: " + top.lines().filter { "Activity" in it }.joinToString(" | ") { it.trim() }.take(300))

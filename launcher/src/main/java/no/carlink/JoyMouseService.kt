@@ -94,6 +94,14 @@ class JoyMouseService : AccessibilityService() {
         learn = JoyLearn(this)
         DayNight.onSystem(this, resources.configuration)
         main.postDelayed(brightTick, 3000)
+        // Tjenesten starter ofte etter at bilen allerede er slått på: se hva som vises nå
+        main.postDelayed({
+            val front = frontPkg()
+            if (front != null) currentPkg = front
+            AppLog.i("app", "in front when the mouse service started: $front")
+            if (front == CAR_SYSTEM) startupCarSystem(delayMs = 500)
+            else if (front != null && front in otherHomes) otherHomeShown(front)
+        }, 1200)
         // Bilens lys-signal (bilskjermens egen innstilling) – reager med en gang det endrer seg
         runCatching {
             contentResolver.registerContentObserver(android.provider.Settings.System.getUriFor("SETTING_SCREEN_ILL"), false,
@@ -148,7 +156,9 @@ class JoyMouseService : AccessibilityService() {
      * Bilskjermen viser bilens eget bilde når bilen slås på. La det stå noen sekunder (bilens egen
      * oppstartsskjerm), og vis så CarLink – med mindre du selv har bedt om bilens system (dobbeltklikk).
      */
-    private fun startupCarSystem() {
+    private fun frontPkg(): String? = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+
+    private fun startupCarSystem(delayMs: Long = 4000) {
         if (!justStarted() || !prefs().getBoolean("replaceFactoryHome", true)) return
         if (SystemClock.elapsedRealtime() < allowCarUntil) return
         main.postDelayed({
@@ -159,7 +169,7 @@ class JoyMouseService : AccessibilityService() {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
                 }
             }
-        }, 4000)
+        }, delayMs)
     }
 
     private fun otherHomeShown(pkg: String) {
@@ -249,7 +259,7 @@ class JoyMouseService : AccessibilityService() {
                 val gap = now - homeUpAt
                 if (homeUpAt == 0L || gap > 500) {
                     homeUpAt = now
-                    homeFirstPkg = currentPkg
+                    homeFirstPkg = currentPkg ?: frontPkg()
                 } else {
                     homeUpAt = 0L
                     if (homeFirstPkg == CAR_SYSTEM) {
