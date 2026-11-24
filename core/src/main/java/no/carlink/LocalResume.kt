@@ -96,35 +96,67 @@ object LocalResume {
         if (t - lastResume < 20_000) return            // allerede i gang (oppstart og telefon samtidig)
         lastResume = t
         AppLog.i("music", "resuming $pkg ($why)")
-        // 1) Appens egen økt finnes fortsatt (skjermen var bare i hvilemodus)
-        val cur = Hub.localMedia.value
-        if (cur != null && cur.pkg == pkg) { MediaListener.control("play"); return }
         if (Hub.localMedia.value?.playing == true) return
-        // 2) Appen er avsluttet (bilskjermen lukker alle apper når bilen slås av): start den i
-        //    bakgrunnen ved å åpne den et øyeblikk, gå tilbake, og be den spille.
-        playButton(ctx, pkg)
-        main.postDelayed({
-            if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) return@postDelayed
-            val launch = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: run { AutoPlay.resume(ctx); return@postDelayed }
-            AppLog.i("music", "opening $pkg briefly to resume")
-            runCatching { ctx.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)) }
-            main.postDelayed({
-                // Tilbake til hjemmeskjermen (CarLink) og spill
-                runCatching {
-                    ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
-                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION))
-                }
+        // 1) Lever appen ikke (bilskjermen lukker alle apper når bilen slås av): åpne den et øyeblikk
+        //    med en gang, så den starter opp mens vi venter på internett fra telefonens hotspot.
+        val alive = Hub.localMedia.value?.pkg == pkg
+        if (!alive) {
+            playButton(ctx, pkg, play = false)
+            ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { launch ->
+                AppLog.i("music", "opening $pkg briefly so it starts up")
+                runCatching { ctx.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)) }
                 main.postDelayed({
-                    if (Hub.localMedia.value?.playing == true) return@postDelayed
-                    val cur = Hub.localMedia.value
-                    if (cur != null && cur.pkg == pkg) MediaListener.control("play") else { playButton(ctx, pkg); AutoPlay.resume(ctx) }
-                }, 1200)
-            }, 3000)
-        }, 2500)
+                    runCatching {
+                        ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION))
+                    }
+                }, 3000)
+            }
+        }
+        // 2) Vent på internett (høyst 2 minutter), så spill – og sjekk at det faktisk spiller
+        waitForInternet(ctx, SystemClock.elapsedRealtime(), minWaitMs = if (alive) 0 else 3500) { waited ->
+            AppLog.i("music", "internet ready after ${waited / 1000} s – pressing play")
+            play(ctx, pkg)
+            main.postDelayed({
+                if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) {
+                    AppLog.i("music", "$pkg is playing"); return@postDelayed
+                }
+                AppLog.i("music", "$pkg not playing yet – trying once more")
+                play(ctx, pkg)
+            }, 10_000)
+        }
     }
 
-    private fun playButton(ctx: Context, pkg: String) {
+    private fun play(ctx: Context, pkg: String) {
+        if (Hub.localMedia.value?.playing == true) return
+        val cur = Hub.localMedia.value
+        if (cur != null && cur.pkg == pkg) MediaListener.control("play") else { playButton(ctx, pkg); AutoPlay.resume(ctx) }
+    }
+
+    private fun hasInternet(ctx: Context): Boolean = runCatching {
+        val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
+        caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }.getOrDefault(false)
+
+    private fun waitForInternet(ctx: Context, started: Long, minWaitMs: Long, then: (Long) -> Unit) {
+        val waited = SystemClock.elapsedRealtime() - started
+        if ((hasInternet(ctx) && waited >= minWaitMs) || waited > 120_000) {
+            if (waited > 120_000) AppLog.i("music", "no internet after 2 min – trying anyway")
+            then(waited); return
+        }
+        main.postDelayed({ waitForInternet(ctx, started, minWaitMs, then) }, 1000)
+    }
+
+    /** Medieknapp til appen. [play] = false: bare vekk den (starter prosessen uten å spille). */
+    private fun playButton(ctx: Context, pkg: String, play: Boolean = true) {
         val t = SystemClock.uptimeMillis()
+        if (!play) {
+            runCatching { ctx.sendBroadcast(Intent(Intent.ACTION_MEDIA_BUTTON).setPackage(pkg)
+                .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(t, t, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_UNKNOWN, 0))) }
+            return
+        }
         for (action in intArrayOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
             runCatching {
                 ctx.sendBroadcast(Intent(Intent.ACTION_MEDIA_BUTTON).setPackage(pkg)
