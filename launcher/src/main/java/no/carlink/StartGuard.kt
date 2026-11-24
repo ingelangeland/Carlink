@@ -71,7 +71,7 @@ object StartGuard {
         if (pkg != CAR || intent == null) return true
         if (intent.action != null) return true            // CarLinks lange Hjem-trykk, og andre som starter den vanlig
         // Bilens programvare starter med en tom handling. Vent litt på loggen hvis trykket ikke er sett ennå.
-        val deadline = SystemClock.elapsedRealtime() + 120
+        val deadline = SystemClock.elapsedRealtime() + 400
         while (SystemClock.elapsedRealtime() - arrowAt > 1500 && SystemClock.elapsedRealtime() < deadline) {
             SystemClock.sleep(10)
         }

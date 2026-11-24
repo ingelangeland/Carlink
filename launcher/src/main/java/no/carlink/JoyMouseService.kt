@@ -205,11 +205,15 @@ class JoyMouseService : AccessibilityService() {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = event.packageName?.toString()
             if (pkg == CAR_SYSTEM) carSystemShown()
+            if (pkg == packageName && event.className?.toString()?.endsWith("ReceiverActivity") == true) carLinkShown()
             if (pkg == "com.spd.screen.saver") { accOffAt = SystemClock.uptimeMillis(); accOnAt = 0L }
             else if (pkg != null && accOffAt > 0 && accOnAt == 0L) { accOnAt = SystemClock.uptimeMillis(); AppLog.i("app", "car switched on (first: $pkg)") }
             if (pkg != null && pkg in otherHomes) otherHomeShown(pkg)
             if (pkg == CAR_SYSTEM) startupCarSystem()
-            if (pkg != null && pkg != "com.android.systemui" && pkg != packageName + ".none") currentPkg = pkg
+            if (pkg != null && pkg != "com.android.systemui" && pkg != packageName + ".none") {
+                if (pkg != CAR_SYSTEM && pkg != packageName && pkg !in otherHomes) { lastAppPkg = pkg; lastAppAt = SystemClock.elapsedRealtime() }
+                currentPkg = pkg
+            }
         }
     }
     override fun onInterrupt() {}
@@ -218,7 +222,9 @@ class JoyMouseService : AccessibilityService() {
     @Volatile private var guard: Process? = null
     @Volatile private var guardOk = false
 
+    @Volatile private var guardWanted = false
     private fun startGuard() {
+        guardWanted = true
         if (guard != null) return
         val apk = applicationInfo.sourceDir
         Thread({
@@ -235,10 +241,13 @@ class JoyMouseService : AccessibilityService() {
                 }
             }
             guardOk = false; guard = null
+            AppLog.i("joystick", "start guard stopped – restarting")
+            main.postDelayed({ if (guardWanted && guard == null && instance != null) startGuard() }, 3000)
         }, "carlink-guard").apply { isDaemon = true; start() }
     }
 
     private fun stopGuard() {
+        guardWanted = false
         runCatching { guard?.outputStream?.close(); guard?.destroy() }
         guard = null; guardOk = false
     }
@@ -267,7 +276,8 @@ class JoyMouseService : AccessibilityService() {
                 if (state == 1 && wanted(this)) main.post { scrollAtDot(up = code == 0x32) }
             }
             // Hjem: dobbeltklikk (to slipp innen 0,5 s) bytter mellom Android og bilens system
-            0x34 -> if (black != null) main.post { hideBlack() } else if (state == 0) {
+            0x34 -> if (black != null) { homeKeyAt = now; main.post { hideBlack() } } else if (state == 0) {
+                homeKeyAt = now
                 val gap = now - homeUpAt
                 if (homeUpAt == 0L || gap > 500) {
                     homeUpAt = now
@@ -332,17 +342,38 @@ class JoyMouseService : AccessibilityService() {
         }
     }
 
-    /** Bilens system åpnet av scrolleknappen: gå rett tilbake. (Ryggekamera og langt Hjem får være.) */
+    // Appen du var i sist (ikke CarLinks hjemskjerm, ikke bilens system)
+    @Volatile private var lastAppPkg: String? = null
+    @Volatile private var lastAppAt = 0L
+    @Volatile private var homeKeyAt = 0L
+
+    /** Gå tilbake til appen du var i (brukes når en pilknapp ved et uhell sendte deg ut av den). */
+    private fun backToLastApp(why: String): Boolean {
+        val app = lastAppPkg ?: return false
+        val i = packageManager.getLaunchIntentForPackage(app) ?: return false
+        AppLog.i("joystick", "$why → back to $app")
+        runCatching {
+            startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        return true
+    }
+
+    /** Bilens system åpnet av scrolleknappen: gå rett tilbake. (Ryggekamera og dobbel Hjem får være.) */
     private fun carSystemShown() {
-        AppLog.i("joystick", "car system shown (guard=${guardOk}, recent arrow=${SystemClock.elapsedRealtime() - scrollKeyAt < 2500})")
-        if (!homeOnly(this) || guardOk) return   // vakten har allerede stoppet det
         val now = SystemClock.elapsedRealtime()
-        if (now < allowCarUntil || now - scrollKeyAt > 2500) return
-        performGlobalAction(GLOBAL_ACTION_BACK)
-        main.postDelayed({
-            val front = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
-            if (front == CAR_SYSTEM) performGlobalAction(GLOBAL_ACTION_HOME)
-        }, 500)
+        val arrow = now - scrollKeyAt < 2500
+        AppLog.i("joystick", "car system shown (guard=${guardOk}, recent arrow=$arrow)")
+        if (!homeOnly(this) || now < allowCarUntil || !arrow) return
+        // Vakten skulle ha stoppet dette – den rakk det ikke. Tilbake til appen du var i.
+        if (!backToLastApp("car system after arrow button")) performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
+    /** CarLinks hjemskjerm dukket opp rett etter en pilknapp (uten at du trykket Hjem): tilbake til appen. */
+    private fun carLinkShown() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - scrollKeyAt > 1500 || now - homeKeyAt < 2000 || now < allowCarUntil) return
+        if (currentPkg == packageName || lastAppPkg == null || currentPkg != lastAppPkg) return
+        backToLastApp("home screen after arrow button")
     }
 
     private fun scrollAtDot(up: Boolean) {
