@@ -235,9 +235,9 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).let { if (it < 0) 4 else it }) {
                 context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.preview(context, night[it])
             }
-            val after = intArrayOf(15, 30, 45, 60)
+            val after = intArrayOf(0, 5, 10, 15, 30, 45, 60, 75, 90, 120)
             choice("Night after sunset", "Always the night level from this long after sunset until sunrise",
-                after.map { "$it min" }, after.indexOf(Brightness.nightAfter(context)).let { if (it < 0) 1 else it }) {
+                after.map { "$it min" }, after.indexOf(Brightness.nightAfter(context)).let { if (it < 0) 4 else it }) {
                 context.prefs().edit().putInt("brightNightAfter", after[it]).apply(); Brightness.tick(context)
             }
             choice("Car lights after sunset", "Before that time the car's lights can switch to the night level (dusk, tunnels)",
@@ -358,7 +358,12 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
                 setOnClickListener { if (!on) { pick(i); build() } }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { rightMargin = 8.dp })
         }
-        r.addView(chips)
+        // Mange valg: raden kan rulles sideveis i stedet for å bli kuttet
+        r.addView(android.widget.HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = OVER_SCROLL_NEVER
+            addView(chips)
+        })
     }
 
     /** Velg hva Meny-knappen skal gjøre: en CarLink-funksjon eller en app. */
