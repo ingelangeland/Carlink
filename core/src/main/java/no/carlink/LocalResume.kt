@@ -89,11 +89,27 @@ object LocalResume {
         // 1) Appens egen økt finnes fortsatt (skjermen var bare i hvilemodus)
         val cur = Hub.localMedia.value
         if (cur != null && cur.pkg == pkg) { MediaListener.control("play"); return }
-        // 2) Etter omstart: be appen fortsette via medieknappen (YouTube Music, Spotify, Tidal støtter dette)
+        // 2) Appen er avsluttet (bilskjermen lukker alle apper når bilen slås av): start den i
+        //    bakgrunnen ved å åpne den et øyeblikk, gå tilbake, og be den spille.
         playButton(ctx, pkg)
         main.postDelayed({
-            if (Hub.localMedia.value?.playing != true && Hub.remoteMedia.value?.playing != true) AutoPlay.resume(ctx)
-        }, 3500)
+            if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) return@postDelayed
+            val launch = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: run { AutoPlay.resume(ctx); return@postDelayed }
+            AppLog.i("music", "opening $pkg briefly to resume")
+            runCatching { ctx.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)) }
+            main.postDelayed({
+                // Tilbake til hjemmeskjermen (CarLink) og spill
+                runCatching {
+                    ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION))
+                }
+                main.postDelayed({
+                    if (Hub.localMedia.value?.playing == true) return@postDelayed
+                    val cur = Hub.localMedia.value
+                    if (cur != null && cur.pkg == pkg) MediaListener.control("play") else { playButton(ctx, pkg); AutoPlay.resume(ctx) }
+                }, 1200)
+            }, 3000)
+        }, 2500)
     }
 
     private fun playButton(ctx: Context, pkg: String) {

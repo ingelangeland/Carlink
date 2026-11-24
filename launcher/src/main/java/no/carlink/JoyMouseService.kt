@@ -102,6 +102,12 @@ class JoyMouseService : AccessibilityService() {
             if (front == CAR_SYSTEM) startupCarSystem(delayMs = 500)
             else if (front != null && front in otherHomes) otherHomeShown(front)
         }, 1200)
+        runCatching {
+            contentResolver.registerContentObserver(android.provider.Settings.System.getUriFor(android.provider.Settings.System.SCREEN_BRIGHTNESS), false,
+                object : android.database.ContentObserver(main) {
+                    override fun onChange(selfChange: Boolean) = Brightness.systemChanged(this@JoyMouseService)
+                })
+        }
         // Bilens lys-signal (bilskjermens egen innstilling) – reager med en gang det endrer seg
         runCatching {
             contentResolver.registerContentObserver(android.provider.Settings.System.getUriFor("SETTING_SCREEN_ILL"), false,

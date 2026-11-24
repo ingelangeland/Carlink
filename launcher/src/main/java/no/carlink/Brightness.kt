@@ -69,7 +69,7 @@ object Brightness {
     private var tookOver = false
 
     fun tick(ctx: Context) {
-        if (!enabled(ctx) || paused) return
+        if (!enabled(ctx) || paused || android.os.SystemClock.uptimeMillis() < previewUntil) return
         if (!tookOver) { tookOver = true; takeOver(ctx, true) }
         val night = isNight(ctx)
         if (night != lastNight) { AppLog.i("light", if (night) "night level" else "day level"); lastNight = night }
@@ -106,6 +106,38 @@ object Brightness {
     }
 
     // ---------------------------------------------------------------- «skjerm av»
+
+    /** Vis et valgt nivå i noen sekunder, så du ser hvordan det blir – så tilbake til riktig nivå. */
+    fun preview(ctx: Context, pct: Int) {
+        if (paused) return
+        previewUntil = android.os.SystemClock.uptimeMillis() + 4000
+        setPercent(ctx, pct)
+        main.postDelayed({ previewUntil = 0; tick(ctx) }, 4100)
+    }
+    private var previewUntil = 0L
+
+    /** Skjermen selv (bilskjermens programvare) endret lysstyrken: sett vår tilbake. */
+    fun systemChanged(ctx: Context) {
+        if (!enabled(ctx) || paused || target < 0) return
+        val v = runCatching { Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS) }.getOrDefault(target)
+        if (abs(v - target) > 6 && current == target) {
+            AppLog.i("light", "screen changed brightness to $v – setting it back to $target")
+            current = v; step(ctx.applicationContext)
+        }
+    }
+
+    fun status(ctx: Context): String {
+        val night = isNight(ctx)
+        val lights = carLights(ctx)
+        val after = lightsAfter(ctx)
+        val why = when {
+            night && !lights -> "after sunset"
+            night -> "car lights on"
+            lights && after >= 0 -> "car lights on, but before %02d:%02d".format(after / 60, after % 60)
+            else -> "daytime"
+        }
+        return "Now: ${if (night) "night" else "day"} level ($why)"
+    }
 
     private var before = -1
 

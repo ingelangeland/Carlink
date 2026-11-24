@@ -217,7 +217,8 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
 
     private fun screen() {
         val b = Brightness.enabled(context)
-        toggle("Automatic brightness", "Day level by day, night level after sunset – or when the car's lights are on after the time below", b) {
+        toggle("Automatic brightness", if (b) Brightness.status(context) + " · tap a level to try it for 4 s"
+            else "Day level by day, night level after sunset – or when the car's lights are on after the time below", b) {
             context.prefs().edit().putBoolean("brightAuto", it).apply()
             if (it) Brightness.tick(context) else Brightness.takeOver(context, false)
             post { refresh() }
@@ -225,11 +226,11 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         if (b) {
             val day = intArrayOf(100, 90, 80, 70, 60, 50)
             choice("Day level", null, day.map { "$it %" }, day.indexOf(Brightness.dayLevel(context)).let { if (it < 0) 1 else it }) {
-                context.prefs().edit().putInt("brightDay", day[it]).apply(); Brightness.tick(context)
+                context.prefs().edit().putInt("brightDay", day[it]).apply(); Brightness.preview(context, day[it])
             }
             val night = intArrayOf(40, 30, 20, 15, 10, 5)
             choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).let { if (it < 0) 3 else it }) {
-                context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.tick(context)
+                context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.preview(context, night[it])
             }
             val times = intArrayOf(-1, 13 * 60, 14 * 60, 15 * 60, 16 * 60, 17 * 60, 18 * 60)
             choice("Car lights mean night after", "The car always has its lights on in Norway, so the signal only counts after this time",

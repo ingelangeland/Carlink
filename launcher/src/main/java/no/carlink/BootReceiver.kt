@@ -83,7 +83,7 @@ object SystemFix {
             }
             // Hvilket signal sender bilskjermen når bilen slås på? (ZLink starts av det – CarLink kan bruke det samme)
             if (!ctx.prefs().getBoolean("accProbeDone", false)) {
-                Root.run("dumpsys package com.zjinnova.zlink | grep -B2 -A8 StartupBroadcastReceiver | head -40")?.let {
+                Root.run("dumpsys package com.zjinnova.zlink | grep -B2 -A8 StartupBroadcastReceiver | head -40", 30)?.let {
                     AppLog.i("app", "zlink startup receiver:\n" + it.lines().filter { l -> l.isNotBlank() }.take(30).joinToString("\n"))
                     ctx.prefs().edit().putBoolean("accProbeDone", true).apply()
                 }
