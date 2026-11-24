@@ -484,6 +484,7 @@ class LinkService : Service() {
                 when { l?.playing == true -> "car"; r?.playing == true -> "phone"; else -> null }
             }.collect { src -> if (src != null && src != prefs().getString("lastSource", null)) prefs().edit().putString("lastSource", src).apply() }
         }
+        launch { LocalResume.track(this@LinkService) }
         btAdapter()?.let { ad -> launch { btListenLoop(ad, incoming) } }
         launch { wifiProbeLoop(incoming) }
         setStatus("Waiting for the phone …")
@@ -565,7 +566,10 @@ class LinkService : Service() {
         // Skjermen av (bilen slått av / hvilemodus): ikke let etter telefonen før skjermen er på igjen
         val screenOn = kotlinx.coroutines.flow.MutableStateFlow(getSystemService(PowerManager::class.java).isInteractive)
         val screenRx = object : android.content.BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) { screenOn.value = i.action == Intent.ACTION_SCREEN_ON }
+            override fun onReceive(c: Context, i: Intent) {
+                screenOn.value = i.action == Intent.ACTION_SCREEN_ON
+                LocalResume.screen(this@LinkService, screenOn.value)
+            }
         }
         ContextCompat.registerReceiver(this, screenRx, android.content.IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)

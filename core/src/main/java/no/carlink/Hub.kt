@@ -20,6 +20,7 @@ object Hub {
         val art: Bitmap? = null,
         val artId: Int = 0,
         val app: String = "",
+        val pkg: String = "",
     ) {
         fun currentPosition(): Long {
             if (!playing) return positionMs

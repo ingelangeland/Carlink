@@ -130,7 +130,7 @@ class MediaListener : NotificationListenerService() {
             title = title, artist = artist, album = album, playing = playing,
             durationMs = md?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L,
             positionMs = pos.coerceAtLeast(0), updatedAt = SystemClock.elapsedRealtime(),
-            art = art, artId = Objects.hash(title, artist, album, art?.width, art?.height), app = appName,
+            art = art, artId = Objects.hash(title, artist, album, art?.width, art?.height), app = appName, pkg = c.packageName,
         )
     }
 
