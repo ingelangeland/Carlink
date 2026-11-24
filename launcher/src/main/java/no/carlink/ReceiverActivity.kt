@@ -146,7 +146,7 @@ class ReceiverActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        window.decorView.postDelayed({ SystemFix.healJoystick(this) }, 6000)
+        window.decorView.postDelayed({ SystemFix.healJoystick(this) }, 2500)
         applySystemBars()
         // Neste manglende tillatelse (etter at Androids egne spørsmål er besvart)
         if (Perms.missing(this, Perms.forRole(false)).isEmpty()) guide.next()

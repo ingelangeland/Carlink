@@ -16,6 +16,7 @@ class BootReceiver : BroadcastReceiver() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
         }
         SystemFix.apply(ctx)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ SystemFix.healJoystick(ctx) }, 2500)
     }
 }
 

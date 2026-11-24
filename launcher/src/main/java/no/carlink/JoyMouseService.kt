@@ -114,6 +114,31 @@ class JoyMouseService : AccessibilityService() {
         Brightness.tick(this)
     }
 
+    // ---- Fabrikkens hjemmeskjerm dukker opp (f.eks. når bilen startes igjen): vis CarLink i stedet
+    private val otherHomes: Set<String> by lazy {
+        runCatching {
+            packageManager.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_MAIN)
+                .addCategory(android.content.Intent.CATEGORY_HOME), 0)
+                .map { it.activityInfo.packageName }
+                .filter { it != packageName && it != "com.android.settings" }.toSet()
+        }.getOrDefault(emptySet())
+    }
+    private var homeRedirectAt = 0L
+
+    private fun otherHomeShown(pkg: String) {
+        if (!prefs().getBoolean("replaceFactoryHome", true)) return
+        val now = SystemClock.uptimeMillis()
+        if (now - homeRedirectAt < 3000) return
+        homeRedirectAt = now
+        AppLog.i("app", "factory home ($pkg) came up – showing CarLink")
+        main.postDelayed({
+            runCatching {
+                startActivity(android.content.Intent(this, ReceiverActivity::class.java)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+            }
+        }, 300)
+    }
+
     private val brightTick = object : Runnable {
         override fun run() { Brightness.tick(this@JoyMouseService); main.postDelayed(this, 60_000) }
     }
@@ -122,6 +147,7 @@ class JoyMouseService : AccessibilityService() {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = event.packageName?.toString()
             if (pkg == CAR_SYSTEM) carSystemShown()
+            if (pkg != null && pkg in otherHomes) otherHomeShown(pkg)
             if (pkg != null && pkg != "com.android.systemui" && pkg != packageName + ".none") currentPkg = pkg
         }
     }
@@ -319,7 +345,8 @@ class JoyMouseService : AccessibilityService() {
     private fun axis(v: Int): Float = ((v - 10) / 235f).coerceIn(0f, 1f)
 
     private fun onPosition(x: Int, y: Int) {
-        if (black != null) { main.post { hideBlack() } }
+        if (black != null) { if (shouldWake(x, y)) main.post { hideBlack() }; return }
+        lastRawX = x; lastRawY = y
         if (logging()) log("CAR pos x=$x y=$y")
         val l = learn
         l?.observe(x, y)
@@ -470,7 +497,10 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun onPress(down: Boolean) {
-        if (black != null) { hideBlack(); return }   // trykk vekker bare skjermen, klikker ikke
+        if (black != null) {   // trykk vekker bare skjermen, klikker ikke (men ikke rett etter at den ble slått av)
+            if (down && SystemClock.uptimeMillis() - blackAt > 1500) hideBlack()
+            return
+        }
         log("PRESS ${if (down) "down" else "up"} dot=%.0f,%.0f raw=%.0f,%.0f".format(cx, cy, tx, ty))
         if (cx < 0) return
         if (down) {
@@ -739,6 +769,18 @@ class JoyMouseService : AccessibilityService() {
     // ------------------------------------------------------------------ «skjerm av»
 
     private var black: View? = null
+    private var blackAt = 0L
+    private var blackRawX = -1
+    private var blackRawY = -1
+    private var lastRawX = -1
+    private var lastRawY = -1
+
+    /** Stikka sklir litt etter trykket på «skjerm av»: vent 1,5 s, og krev en tydelig bevegelse. */
+    private fun shouldWake(x: Int, y: Int): Boolean {
+        if (SystemClock.uptimeMillis() - blackAt < 1500) { blackRawX = x; blackRawY = y; return false }
+        if (blackRawX < 0) { blackRawX = x; blackRawY = y; return false }
+        return abs(x - blackRawX) + abs(y - blackRawY) > 12
+    }
     val isBlack get() = black != null
 
     /** Svart skjerm og lyset av. Musikken spiller videre. Beveg joysticken eller trykk for å vekke. */
@@ -765,6 +807,7 @@ class JoyMouseService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.OPAQUE)
         runCatching { w.addView(v, lp); black = v; v.requestFocus() }
+        blackAt = SystemClock.uptimeMillis(); blackRawX = lastRawX; blackRawY = lastRawY
         dot?.alpha = 0f
         Brightness.blackout(this, true)
         AppLog.i("screen", "screen off")
