@@ -24,6 +24,17 @@ class BootReceiver : BroadcastReceiver() {
 object SystemFix {
     @Volatile private var done = false
 
+    /** Bilskjermens sidepanel (fanen på kanten av skjermen, en del av com.spd.home). */
+    const val SIDE_PANEL = "com.spd.home/com.spd.ex.window.ExtendsWindowService"
+    fun sidePanel(ctx: Context, show: Boolean) {
+        ctx.prefs().edit().putBoolean("hideSidePanel", !show).apply()
+        AppLog.i("app", "car screen side panel ${if (show) "shown" else "hidden"}")
+        Thread {
+            Root.run(if (show) "pm enable $SIDE_PANEL; am startservice -n $SIDE_PANEL -a com.spd.ex.window.show"
+                     else "am stopservice -n $SIDE_PANEL; pm disable $SIDE_PANEL")
+        }.start()
+    }
+
     /**
      * Alt i én root-kommando (raskere oppstart):
      *  - bilskjermens egne hjemmeskjermer skal være PÅ (com.spd.home styrer oppstarten; Launcher3 startes
@@ -43,6 +54,7 @@ object SystemFix {
                 if (!p.getBoolean("homesRestored", false)) append("pm enable com.android.launcher3 >/dev/null 2>&1\n")
                 append("pm set-home-activity $pkg/no.carlink.ReceiverActivity >/dev/null 2>&1\n")
                 append("[ \"$(settings get system SETTING_LUNCH_FIRST_APP)\" = \"$pkg\" ] || { settings put system SETTING_LUNCH_FIRST_APP $pkg; echo LAUNCH_CHANGED; }\n")
+                if (p.getBoolean("hideSidePanel", false)) append("am stopservice -n $SIDE_PANEL >/dev/null 2>&1; pm disable $SIDE_PANEL >/dev/null 2>&1\n")
                 append("echo TOP; dumpsys activity activities | grep -m 2 mResumedActivity\n")
                 if (probe) append("echo ZLINK; dumpsys package com.zjinnova.zlink | grep -B2 -A8 StartupBroadcastReceiver | head -30\n")
             }, 30) ?: return@Thread

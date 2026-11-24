@@ -257,6 +257,10 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             AppLog.i("app", "climate pop-up ${if (v == 1) "shown" else "hidden"}")
             Thread { Root.run("settings put system SETTING_FACTORY_AIR $v") }.start()
         }
+        choice("Car screen side panel", "The tab on the edge of the screen from the car screen's own home screen",
+            listOf("Show", "Hide"), if (context.prefs().getBoolean("hideSidePanel", false)) 1 else 0) {
+            SystemFix.sidePanel(context, it == 0)
+        }
         choice("Size of text and buttons", null, UiScale.labels.toList(),
             UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
             context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()
