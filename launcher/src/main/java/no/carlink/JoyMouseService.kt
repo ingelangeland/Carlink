@@ -114,7 +114,7 @@ class JoyMouseService : AccessibilityService() {
                 object : android.database.ContentObserver(main) {
                     override fun onChange(selfChange: Boolean) {
                         AppLog.i("light", "car lights ${if (Brightness.carLights(this@JoyMouseService)) "on" else "off"}")
-                        Brightness.tick(this@JoyMouseService)
+                        Brightness.carLightsChanged(this@JoyMouseService)
                     }
                 })
         }
@@ -192,8 +192,13 @@ class JoyMouseService : AccessibilityService() {
         }, 300)
     }
 
+    private var brightCount = 0
     private val brightTick = object : Runnable {
-        override fun run() { Brightness.tick(this@JoyMouseService); main.postDelayed(this, 60_000) }
+        override fun run() {
+            if (++brightCount % 6 == 0) Brightness.tick(this@JoyMouseService)   // hvert minutt
+            Brightness.watchHardware(this@JoyMouseService)                    // hvert 10. sekund (bare med bilens lys på)
+            main.postDelayed(this, 10_000)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {

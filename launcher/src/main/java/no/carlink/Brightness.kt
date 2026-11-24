@@ -117,8 +117,45 @@ object Brightness {
         step(ctx.applicationContext)
     }
 
+    // ---- Når bilens lys er på, setter bilskjermen selve skjermlyset rett i maskinvaren (forbi Android).
+    //      Da skriver CarLink nivået dit selv (root), og passer på at det blir stående.
+    private const val BACKLIGHT = "/sys/class/leds/lcd-backlight/brightness"
+    @Volatile private var hwBusy = false
+    private var lastHw = -1
+
+    private fun writeHardware(ctx: Context, v: Int, why: String) {
+        if (hwBusy) return
+        hwBusy = true
+        Thread {
+            val cur = Root.run("cat $BACKLIGHT")?.lines()?.lastOrNull { it.isNotBlank() }?.trim()?.toIntOrNull()
+            if (cur != null && kotlin.math.abs(cur - v) > 3) {
+                Root.run("echo $v > $BACKLIGHT")
+                if (lastHw != v || why != "watch") AppLog.i("light", "screen light set directly: $cur → $v ($why)")
+            }
+            lastHw = v
+            hwBusy = false
+        }.start()
+    }
+
+    /** Bilens lys slått av/på: bilskjermen setter sitt eget lys – vent litt og sett vårt. */
+    fun carLightsChanged(ctx: Context) {
+        tick(ctx)
+        if (!enabled(ctx) || paused) return
+        main.postDelayed({ if (target >= 0 && carLights(ctx)) writeHardware(ctx, target, "car lights") }, 700)
+        main.postDelayed({ if (target >= 0 && carLights(ctx)) writeHardware(ctx, target, "car lights") }, 2500)
+    }
+
+    /** Hvert 10. sekund mens bilens lys er på: står lyset fortsatt der vi satte det? */
+    fun watchHardware(ctx: Context) {
+        if (!enabled(ctx) || paused || target < 0 || !carLights(ctx)) return
+        writeHardware(ctx, target, "watch")
+    }
+
     private fun step(ctx: Context) {
-        if (current == target || target < 0) return
+        if (current == target || target < 0) {
+            if (target >= 0 && carLights(ctx) && enabled(ctx)) writeHardware(ctx, target, "level")
+            return
+        }
         val d = target - current
         current += if (abs(d) <= 4) d else d / 6 + (if (d > 0) 1 else -1)
         write(ctx, current)

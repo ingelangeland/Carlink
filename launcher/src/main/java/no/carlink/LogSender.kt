@@ -17,7 +17,7 @@ object LogSender {
         // Skjermlyset: bilskjermens innstillinger og selve lys-styringen i maskinvaren (for nattmodus)
         val display = Root.run("""
             echo "car lights (SETTING_SCREEN_ILL): ${'$'}(settings get system SETTING_SCREEN_ILL)"
-            settings list system | grep -iE "bright|ill|dim|night|backl|lcd"
+            settings list system | grep -aiE "bright|ill|dim|night|backl|lcd"
             for f in /sys/class/leds/*/brightness /sys/class/leds/*/max_brightness /sys/class/backlight/*/brightness /sys/class/backlight/*/actual_brightness /sys/class/backlight/*/max_brightness; do [ -e "${'$'}f" ] && echo "${'$'}f = ${'$'}(cat ${'$'}f 2>/dev/null)"; done
             getprop | grep -iE "bright|backl|ill|dim|lcd"
         """.trimIndent(), 10).orEmpty()
