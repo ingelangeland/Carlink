@@ -79,7 +79,6 @@ object SystemFix {
             // Hva vises når CarLink starter? (hjelper å forstå oppstarten)
             Root.run("dumpsys activity activities | grep -m 3 -E 'mResumedActivity|mFocusedActivity'")?.let { top ->
                 AppLog.i("app", "in front at start: " + top.lines().filter { "Activity" in it }.joinToString(" | ") { it.trim() }.take(300))
-                }
             }
             val cur = Root.run("settings get system SETTING_LUNCH_FIRST_APP")?.lines()?.lastOrNull { it.isNotBlank() }?.trim()
             if (cur != null && cur != pkg) {
