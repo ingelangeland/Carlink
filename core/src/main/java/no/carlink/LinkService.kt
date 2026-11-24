@@ -670,7 +670,12 @@ class LinkService : Service() {
             val auto = AutoPlay.enabled(this@LinkService)
             val last = prefs().getString("lastSource", "phone")
             out.trySend(JSONObject().put("t", "cfg").put("autoPlay", auto).put("last", last).toString())
-            if (auto && last == "car") main.postDelayed({ AutoPlay.resume(this@LinkService) }, 1500)
+            if (auto && last == "car") main.postDelayed({
+                // Musikk på skjermen sist: start samme app (åpnes et øyeblikk hvis bilskjermen har lukket den)
+                val pkg = prefs().getString("resumePkg", null)
+                if (Hub.localMedia.value?.playing == true) Unit
+                else if (pkg != null) LocalResume.resumeNow(this@LinkService, pkg, "phone connected") else AutoPlay.resume(this@LinkService)
+            }, 1500)
         }
         if (!isSender) main.post { MediaKeys.start(this@LinkService) }
         val keysJob = if (!isSender) launch(Dispatchers.Main) {

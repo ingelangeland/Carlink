@@ -85,10 +85,21 @@ object LocalResume {
         // avsluttes – derfor godtas det at musikken stoppet inntil 2 minutter før slutten
         if (playingAt == 0L || playingAt < aliveAt - 120_000) { AppLog.i("music", "no resume ($why): music was paused before the car was switched off"); return }
         if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) return
+        resumeNow(ctx, pkg, why)
+    }
+
+    /** Start musikken i [pkg]: spill direkte hvis appen lever, ellers åpne den et øyeblikk først. */
+    private var lastResume = 0L
+
+    fun resumeNow(ctx: Context, pkg: String, why: String) {
+        val t = SystemClock.elapsedRealtime()
+        if (t - lastResume < 20_000) return            // allerede i gang (oppstart og telefon samtidig)
+        lastResume = t
         AppLog.i("music", "resuming $pkg ($why)")
         // 1) Appens egen økt finnes fortsatt (skjermen var bare i hvilemodus)
         val cur = Hub.localMedia.value
         if (cur != null && cur.pkg == pkg) { MediaListener.control("play"); return }
+        if (Hub.localMedia.value?.playing == true) return
         // 2) Appen er avsluttet (bilskjermen lukker alle apper når bilen slås av): start den i
         //    bakgrunnen ved å åpne den et øyeblikk, gå tilbake, og be den spille.
         playButton(ctx, pkg)
