@@ -39,6 +39,21 @@ class ReceiverActivity : AppCompatActivity() {
     private lateinit var split: SplitLayout
     private lateinit var home: HomeView
     private lateinit var drawer: AppDrawer
+    private lateinit var recents: RecentsPanel
+
+    /** «Skjerm av» uten musetjenesten: svart flate i CarLink, trykk eller tast vekker. */
+    private fun blackoutHere() {
+        val root = window.decorView as android.view.ViewGroup
+        val v = object : android.view.View(this) {
+            override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+                if (e.action == android.view.MotionEvent.ACTION_UP) { root.removeView(this); Brightness.blackout(context, false) }
+                return true
+            }
+        }
+        v.setBackgroundColor(0xFF000000.toInt())
+        root.addView(v, android.view.ViewGroup.LayoutParams(-1, -1))
+        Brightness.blackout(this, true)
+    }
     private lateinit var settings: SettingsPanel
     private lateinit var rail: View
     private lateinit var pointerRoot: PointerRoot
@@ -142,6 +157,7 @@ class ReceiverActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         DayNight.onSystem(this, newConfig)
+        Brightness.tick(this)
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -159,7 +175,7 @@ class ReceiverActivity : AppCompatActivity() {
         // Sjekk dag/natt hvert minutt mens skjermen vises (billig: én liten utregning)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (true) { DayNight.update(this@ReceiverActivity); kotlinx.coroutines.delay(60_000) }
+                while (true) { DayNight.update(this@ReceiverActivity); Brightness.tick(this@ReceiverActivity); kotlinx.coroutines.delay(60_000) }
             }
         }
         // Lydbølger for musikk som spilles på skjermen selv – bare mens CarLink vises
@@ -216,19 +232,26 @@ class ReceiverActivity : AppCompatActivity() {
                 if (panes.size < 2) setLayout(listOf(PaneType.MAP, PaneType.MUSIC, PaneType.APPS)) else showSplit()
             }
             override fun openSettings() = showSettings()
+            override fun openRecents() = recents.open()
+            override fun screenOff() {
+                val svc = JoyMouseService.instance
+                if (svc != null) svc.blackout(true) else blackoutHere()
+            }
         })
         stack.addView(home, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         root.addView(stack, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
         content.addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         drawer = AppDrawer(this, content)
         frame.addView(drawer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        recents = RecentsPanel(this, content)
+        frame.addView(recents, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         settings = SettingsPanel(this, content, settingsHost)
         frame.addView(settings, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         setContentView(frame)
 
         // Som hjemmeskjerm skal «tilbake» ikke lukke appen.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { if (settings.isOpen) settings.close() else if (drawer.isOpen) drawer.close() }
+            override fun handleOnBackPressed() { if (settings.isOpen) settings.close() else if (drawer.isOpen) drawer.close() else if (recents.isOpen) recents.close() }
         })
 
         loadState()
@@ -406,7 +429,7 @@ class ReceiverActivity : AppCompatActivity() {
     /** Hjem-knappen på enheten tar deg alltid tilbake til hjemmeskjermen. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.hasCategory(Intent.CATEGORY_HOME)) { drawer.close(); settings.close(); showHome() }
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) { drawer.close(); settings.close(); recents.close(); showHome() }
         handleIntent(intent)
     }
 

@@ -216,6 +216,27 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
     }
 
     private fun screen() {
+        val b = Brightness.enabled(context)
+        toggle("Automatic brightness", "Day level by day, night level after sunset – or when the car's lights are on after the time below", b) {
+            context.prefs().edit().putBoolean("brightAuto", it).apply(); if (it) Brightness.tick(context)
+            post { refresh() }
+        }
+        if (b) {
+            val day = intArrayOf(100, 90, 80, 70, 60, 50)
+            choice("Day level", null, day.map { "$it %" }, day.indexOf(Brightness.dayLevel(context)).coerceAtLeast(1)) {
+                context.prefs().edit().putInt("brightDay", day[it]).apply(); Brightness.tick(context)
+            }
+            val night = intArrayOf(40, 30, 20, 15, 10, 5)
+            choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).coerceAtLeast(3)) {
+                context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.tick(context)
+            }
+            val times = intArrayOf(-1, 13 * 60, 14 * 60, 15 * 60, 16 * 60, 17 * 60, 18 * 60)
+            choice("Car lights mean night after", "The car always has its lights on in Norway, so the signal only counts after this time",
+                listOf("Never", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"),
+                times.indexOf(Brightness.lightsAfter(context)).coerceAtLeast(0)) {
+                context.prefs().edit().putInt("brightLightsAfter", times[it]).apply(); Brightness.tick(context)
+            }
+        }
         choice("Size of text and buttons", null, UiScale.labels.toList(),
             UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
             context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()

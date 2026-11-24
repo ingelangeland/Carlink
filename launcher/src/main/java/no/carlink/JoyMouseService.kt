@@ -92,6 +92,8 @@ class JoyMouseService : AccessibilityService() {
         instance = this
         AppLog.init(this); AppLog.i("joystick", "mouse service connected")
         learn = JoyLearn(this)
+        DayNight.onSystem(this, resources.configuration)
+        main.postDelayed(brightTick, 3000)
         wm = getSystemService(WindowManager::class.java)
         prefs().registerOnSharedPreferenceChangeListener(prefListener)
         apply()
@@ -104,6 +106,16 @@ class JoyMouseService : AccessibilityService() {
         stopGuard()
         instance = null
         super.onDestroy()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        DayNight.onSystem(this, newConfig)
+        Brightness.tick(this)
+    }
+
+    private val brightTick = object : Runnable {
+        override fun run() { Brightness.tick(this@JoyMouseService); main.postDelayed(this, 60_000) }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -167,7 +179,7 @@ class JoyMouseService : AccessibilityService() {
                 if (state == 1 && wanted(this)) main.post { scrollAtDot(up = code == 0x32) }
             }
             // Hjem: dobbeltklikk (to slipp innen 0,5 s) bytter mellom Android og bilens system
-            0x34 -> if (state == 0) {
+            0x34 -> if (black != null) main.post { hideBlack() } else if (state == 0) {
                 val gap = now - homeUpAt
                 if (homeUpAt == 0L || gap > 500) {
                     homeUpAt = now
@@ -307,6 +319,7 @@ class JoyMouseService : AccessibilityService() {
     private fun axis(v: Int): Float = ((v - 10) / 235f).coerceIn(0f, 1f)
 
     private fun onPosition(x: Int, y: Int) {
+        if (black != null) { main.post { hideBlack() } }
         if (logging()) log("CAR pos x=$x y=$y")
         val l = learn
         l?.observe(x, y)
@@ -457,6 +470,7 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun onPress(down: Boolean) {
+        if (black != null) { hideBlack(); return }   // trykk vekker bare skjermen, klikker ikke
         log("PRESS ${if (down) "down" else "up"} dot=%.0f,%.0f raw=%.0f,%.0f".format(cx, cy, tx, ty))
         if (cx < 0) return
         if (down) {
@@ -720,6 +734,48 @@ class JoyMouseService : AccessibilityService() {
             }
             return false
         }
+    }
+
+    // ------------------------------------------------------------------ «skjerm av»
+
+    private var black: View? = null
+    val isBlack get() = black != null
+
+    /** Svart skjerm og lyset av. Musikken spiller videre. Beveg joysticken eller trykk for å vekke. */
+    fun blackout(on: Boolean) = main.post { if (on) showBlack() else hideBlack() }
+
+    @Suppress("DEPRECATION")
+    private fun showBlack() {
+        if (black != null) return
+        val w = wm ?: return
+        val v = object : FrameLayout(this) {
+            init { isFocusable = true; isFocusableInTouchMode = true; setBackgroundColor(0xFF000000.toInt()) }
+            override fun onTouchEvent(e: android.view.MotionEvent): Boolean { if (e.action == android.view.MotionEvent.ACTION_UP) hideBlack(); return true }
+            override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+                if (e.keyCode in mediaKeys) { runCatching { getSystemService(android.media.AudioManager::class.java).dispatchMediaKeyEvent(e) }; return true }
+                if (e.keyCode == KeyEvent.KEYCODE_VOLUME_UP || e.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) return false
+                if (e.action == KeyEvent.ACTION_UP) hideBlack()
+                return true
+            }
+        }
+        v.systemUiVisibility = barsFlags() or View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.OPAQUE)
+        runCatching { w.addView(v, lp); black = v; v.requestFocus() }
+        dot?.alpha = 0f
+        Brightness.blackout(this, true)
+        AppLog.i("screen", "screen off")
+    }
+
+    private fun hideBlack() {
+        val v = black ?: return
+        black = null
+        runCatching { wm?.removeView(v) }
+        Brightness.blackout(this, false)
+        AppLog.i("screen", "screen on")
     }
 
     private fun removeOverlay() {

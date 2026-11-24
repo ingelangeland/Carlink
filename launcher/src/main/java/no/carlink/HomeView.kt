@@ -45,6 +45,8 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         fun openApps()
         fun openSplit()
         fun openSettings()
+        fun openRecents()
+        fun screenOff()
     }
 
     /** En flate som skal fargelegges etter coveret. */
@@ -107,6 +109,8 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         top.addView(roundIcon(R.drawable.ic_nav, 44) { actions.openMap() }, lp(44.dp, 44.dp).apply { leftMargin = 14.dp })
         top.addView(View(ctx).apply { setBackgroundColor(0x40FFFFFF) }, lp(1.dp, 26.dp).apply { leftMargin = 14.dp; rightMargin = 14.dp })
         top.addView(roundIcon(R.drawable.ic_split, 44) { actions.openSplit() })
+        top.addView(roundIcon(R.drawable.ic_recent, 44) { actions.openRecents() }, lp(44.dp, 44.dp).apply { leftMargin = 14.dp })
+        top.addView(roundIcon(R.drawable.ic_power, 44) { actions.screenOff() }, lp(44.dp, 44.dp).apply { leftMargin = 14.dp })
         top.addView(View(ctx), LinearLayout.LayoutParams(0, 1, 1f))
         // Høyre: fart + vær
         top.addView(speedTv)

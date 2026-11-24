@@ -17,7 +17,8 @@ object DayNight {
     enum class Mode(val label: String) { AUTO("Auto"), DAY("Day"), NIGHT("Night") }
 
     val night = MutableStateFlow(true)
-    private var systemNight: Boolean? = null
+    /** Natt-signal fra bilen (Android sitt nattmodus-flagg, som skjermen setter når lyset slås på). */
+    var systemNight: Boolean? = null; private set
 
     fun mode(ctx: Context): Mode =
         runCatching { Mode.valueOf(ctx.prefs().getString("mapMode", "AUTO")!!) }.getOrDefault(Mode.AUTO)
