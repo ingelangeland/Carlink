@@ -168,6 +168,7 @@ class ReceiverActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         AppLog.init(this)
         SystemFix.apply(this)
+        CarIntro.maybeShow(this)
         DebugFlags.noVisualizer = intent?.getBooleanExtra("noviz", false) == true
         DebugFlags.noArt = intent?.getBooleanExtra("noart", false) == true
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

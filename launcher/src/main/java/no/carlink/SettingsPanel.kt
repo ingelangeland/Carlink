@@ -245,6 +245,10 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
                 context.prefs().edit().putBoolean("brightLightsAfterSunset", it == 0).apply(); Brightness.tick(context)
             }
         }
+        choice("Car's start screen", "When the car is switched on, show the car's own start screen this long before CarLink",
+            CarIntro.choices.map { if (it == 0) "Off" else "$it s" }, CarIntro.choices.indexOf(CarIntro.seconds(context)).let { if (it < 0) 2 else it }) {
+            context.prefs().edit().putInt("introSecs", CarIntro.choices[it]).apply()
+        }
         choice("Size of text and buttons", null, UiScale.labels.toList(),
             UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
             context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()

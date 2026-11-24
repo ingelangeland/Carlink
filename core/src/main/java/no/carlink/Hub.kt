@@ -41,6 +41,8 @@ object Hub {
     val connected = MutableStateFlow(false)
     /** Bilen er slått av (bilskjermen står i hvilemodus): CarLink holder ingenting våkent. Settes av bilskjerm-appen. */
     val parked = MutableStateFlow(false)
+    /** Bilens startbilde vises til dette tidspunktet (elapsedRealtime): ikke åpne andre apper før. */
+    @Volatile var introUntil = 0L
     val peerName = MutableStateFlow("")
     /** Sender: lyd strømmes ut. Mottaker: lyd fra telefonen spilles av her. */
     val audioStreaming = MutableStateFlow(false)

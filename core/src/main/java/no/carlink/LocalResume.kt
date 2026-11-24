@@ -93,6 +93,8 @@ object LocalResume {
 
     fun resumeNow(ctx: Context, pkg: String, why: String) {
         val t = SystemClock.elapsedRealtime()
+        // Bilens startbilde vises: start musikken når det er ferdig
+        if (Hub.introUntil > t) { main.postDelayed({ resumeNow(ctx, pkg, why) }, Hub.introUntil - t + 300); return }
         if (t - lastResume < 20_000) return            // allerede i gang (oppstart og telefon samtidig)
         lastResume = t
         AppLog.i("music", "resuming $pkg ($why)")

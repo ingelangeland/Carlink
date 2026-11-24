@@ -165,12 +165,14 @@ class JoyMouseService : AccessibilityService() {
      * Bilskjermen viser bilens eget bilde når bilen slås på. La det stå noen sekunder (bilens egen
      * oppstartsskjerm), og vis så CarLink – med mindre du selv har bedt om bilens system (dobbeltklikk).
      */
+    fun frontPackage(): String? = currentPkg ?: frontPkg()
     private fun frontPkg(): String? = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
 
     private fun startupCarSystem(delayMs: Long = 4000) {
         if (!justStarted() || !prefs().getBoolean("replaceFactoryHome", true)) return
         if (SystemClock.elapsedRealtime() < allowCarUntil) return
         main.postDelayed({
+            if (SystemClock.elapsedRealtime() < Hub.introUntil) return@postDelayed   // bilens startbilde vises med vilje
             if (currentPkg == CAR_SYSTEM && SystemClock.elapsedRealtime() >= allowCarUntil) {
                 AppLog.i("app", "car system at startup – showing CarLink")
                 runCatching {
@@ -182,6 +184,7 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun otherHomeShown(pkg: String) {
+        if (SystemClock.elapsedRealtime() < Hub.introUntil) return   // bilens startbilde vises med vilje
         if (!prefs().getBoolean("replaceFactoryHome", true)) return
         val now = SystemClock.uptimeMillis()
         if (now - homeRedirectAt < 3000) return
