@@ -451,7 +451,7 @@ class JoyMouseService : AccessibilityService() {
                 val p = ProcessBuilder("su", "-c", "sh").redirectErrorStream(true).start()
                 proc = p
                 readerStartedAt = SystemClock.elapsedRealtime()
-                p.outputStream.write("exec logcat -v raw -T 1 -s XCarBusLexusCar:D\n".toByteArray())
+                p.outputStream.write("exec logcat -v raw -T 1 -s XCarBusLexusCar:D SpdService-HandlerManager:I\n".toByteArray())
                 p.outputStream.flush()
                 p.inputStream.bufferedReader().useLines { lines ->
                     for (line in lines) {
@@ -466,6 +466,10 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun parse(line: String) {
+        if (line.startsWith("voltage=")) {          // bilens batterispenning (ca. hvert 20. sekund)
+            line.substring(8).trim().toIntOrNull()?.takeIf { it in 50..200 }?.let { Hub.voltage.value = it }
+            return
+        }
         val i = line.indexOf("rxData:")
         if (i < 0) return
         val end = line.indexOf(',', i).let { if (it < 0) line.length else it }

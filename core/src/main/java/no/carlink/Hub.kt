@@ -41,6 +41,8 @@ object Hub {
     val connected = MutableStateFlow(false)
     /** Bilen er slått av (bilskjermen står i hvilemodus): CarLink holder ingenting våkent. Settes av bilskjerm-appen. */
     val parked = MutableStateFlow(false)
+    /** Bilens batterispenning i tideler av volt (137 = 13,7 V), lest fra bilskjermens logg. */
+    val voltage = MutableStateFlow<Int?>(null)
     /** Bilens startbilde vises til dette tidspunktet (elapsedRealtime): ikke åpne andre apper før. */
     @Volatile var introUntil = 0L
     val peerName = MutableStateFlow("")

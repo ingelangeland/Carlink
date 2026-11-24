@@ -59,6 +59,12 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
 
     private val weatherTv = ctx.label("", 20f, 0xFFFFFFFF.toInt()).shadow()
     private val speedTv = ctx.label("", 15f, 0xFFFFFFFF.toInt(), true).shadow()
+    private val voltTv = ctx.label("", 15f, 0xFFFFFFFF.toInt(), true).shadow().apply {
+        setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_battery, 0, 0, 0)
+        compoundDrawablePadding = 5.dp
+        gravity = Gravity.CENTER_VERTICAL
+        visibility = GONE
+    }
     private val statusDot = View(ctx)
     private val statusTv = ctx.label("", 13f, 0xE6FFFFFF.toInt(), true).shadow()
 
@@ -117,6 +123,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         top.addView(View(ctx), LinearLayout.LayoutParams(0, 1, 1f))
         // Høyre: fart + vær
         top.addView(speedTv)
+        top.addView(voltTv, lp(WRAP, WRAP).apply { leftMargin = 18.dp })
         top.addView(weatherTv, lp(WRAP, WRAP).apply { leftMargin = 18.dp })
         col.addView(top, lp(MATCH, 56.dp))
 
@@ -248,6 +255,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         val alpha = (0x38 + (0xD0 - 0x38) * need).toInt()
         val shadow = Ambient.alpha(Ambient.deep(t.dark), alpha)
         speedTv.setShadowLayer(radius, 0f, 0f, shadow)
+        voltTv.setShadowLayer(radius, 0f, 0f, shadow)
         weatherTv.setShadowLayer(radius, 0f, 0f, shadow)
     }
 
@@ -289,6 +297,21 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
                     navText.text = n.text; navText.visibility = if (n.text.isBlank()) GONE else VISIBLE
                     navSub.text = n.sub; navSub.visibility = if (n.sub.isBlank()) GONE else VISIBLE
                 }
+            }
+        }
+        scope.launch {
+            Hub.voltage.collect { v ->
+                if (v == null) { voltTv.visibility = GONE; return@collect }
+                voltTv.visibility = VISIBLE
+                voltTv.text = String.format(java.util.Locale("nb", "NO"), "%.1f V", v / 10f)
+                // Hvit: normal · gul: lav · rød: for lav eller for høy
+                val c = when {
+                    v < 118 || v > 150 -> 0xFFFF5A52.toInt()
+                    v < 122 -> 0xFFFFC83D.toInt()
+                    else -> 0xFFFFFFFF.toInt()
+                }
+                voltTv.setTextColor(c)
+                voltTv.compoundDrawableTintList = ColorStateList.valueOf(c)
             }
         }
         scope.launch { Weather.now.collect { w -> weatherTv.text = w?.let { "${Weather.icon(it.symbol)}  ${it.tempC}°" } ?: "" } }
