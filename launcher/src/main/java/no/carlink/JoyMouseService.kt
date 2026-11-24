@@ -99,6 +99,9 @@ class JoyMouseService : AccessibilityService() {
             val front = frontPkg()
             if (front != null) currentPkg = front
             AppLog.i("app", "in front when the mouse service started: $front")
+            // Bilskjermen stopper CarLink når bilen slås av, og noe starter det igjen litt etter.
+            // Står hvileskjermen da, er bilen av: slipp alt.
+            if (front == SCREEN_SAVER) setParked(true)
             if (front == CAR_SYSTEM) startupCarSystem(delayMs = 500)
             else if (front != null && front in otherHomes) otherHomeShown(front)
         }, 1200)
@@ -192,9 +195,25 @@ class JoyMouseService : AccessibilityService() {
         }, 300)
     }
 
+    // ---- Bilen av: hvilemodus. CarLink stopper alt som går i bakgrunnen til bilen slås på igjen.
+    private val SCREEN_SAVER = "com.spd.screen.saver"
+
+    private fun setParked(on: Boolean) {
+        if (Hub.parked.value == on) return
+        Hub.parked.value = on
+        if (on) {
+            AppLog.i("app", "car off – CarLink is resting (joystick, guard, light and phone search paused)")
+            stop(); stopGuard()
+        } else {
+            AppLog.i("app", "car on – CarLink awake again")
+            apply()
+        }
+    }
+
     private var brightCount = 0
     private val brightTick = object : Runnable {
         override fun run() {
+            if (Hub.parked.value) { main.postDelayed(this, 10_000); return }
             if (++brightCount % 6 == 0) Brightness.tick(this@JoyMouseService)   // hvert minutt
             Brightness.watchHardware(this@JoyMouseService)                    // hvert 10. sekund (bare med bilens lys på)
             main.postDelayed(this, 10_000)
@@ -206,8 +225,11 @@ class JoyMouseService : AccessibilityService() {
             val pkg = event.packageName?.toString()
             if (pkg == CAR_SYSTEM) carSystemShown()
             if (pkg == packageName && event.className?.toString()?.endsWith("ReceiverActivity") == true) carLinkShown()
-            if (pkg == "com.spd.screen.saver") { accOffAt = SystemClock.uptimeMillis(); accOnAt = 0L }
-            else if (pkg != null && accOffAt > 0 && accOnAt == 0L) { accOnAt = SystemClock.uptimeMillis(); AppLog.i("app", "car switched on (first: $pkg)") }
+            if (pkg == SCREEN_SAVER) {
+                accOffAt = SystemClock.uptimeMillis(); accOnAt = 0L
+                if (SystemClock.uptimeMillis() - serviceStartedAt < 30_000) setParked(true)
+            } else if (pkg != null && accOffAt > 0 && accOnAt == 0L) { accOnAt = SystemClock.uptimeMillis(); AppLog.i("app", "car switched on (first: $pkg)") }
+            if (pkg != null && pkg != SCREEN_SAVER && pkg != "com.android.systemui" && Hub.parked.value) setParked(false)
             if (pkg != null && pkg in otherHomes) otherHomeShown(pkg)
             if (pkg == CAR_SYSTEM) startupCarSystem()
             if (pkg != null && pkg != "com.android.systemui" && pkg != packageName + ".none") {
@@ -253,6 +275,7 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun apply() {
+        if (Hub.parked.value) { stop(); stopGuard(); return }
         if (homeOnly(this)) startGuard() else stopGuard()
         if (wanted(this) || homeOnly(this)) start() else stop()
         if (wanted(this)) addOverlay() else removeOverlay()

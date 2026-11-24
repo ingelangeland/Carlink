@@ -583,7 +583,9 @@ class LinkService : Service() {
         incoming: Channel<Pair<Socket, Network?>>,
     ) {
         while (coroutineContext.isActive) {
-            if (!screenOn.value) { screenOn.first { it } }   // venter uten å bruke strøm
+            if (!screenOn.value || Hub.parked.value) {          // venter uten å bruke strøm
+                kotlinx.coroutines.flow.combine(screenOn, Hub.parked) { on, parked -> on && !parked }.first { it }
+            }
             if (!rxBusy.get()) {
                 val candidates = LinkedHashMap<String, Network?>()
                 try {
@@ -684,6 +686,12 @@ class LinkService : Service() {
         } else null
         if (isSender && autoStarted && projection == null) audioReminder(true)
         val pingJob = launch { while (isActive) { delay(5000); out.trySend("{\"t\":\"ping\"}") } }
+        // Bilen slått av: koble fra telefonen med en gang, så ingenting holder bilskjermen våken
+        val parkJob = if (!isSender) launch {
+            Hub.parked.first { it }
+            AppLog.i("link", "car off – closing the phone connection")
+            close(sock)
+        } else null
         val feedJob = if (isSender) launch(Dispatchers.Main) { senderFeeds() } else null
         if (isSender) startAudioIfReady()
 
@@ -707,7 +715,7 @@ class LinkService : Service() {
             holdLocks(false)
             keysJob?.cancel()
             if (!isSender) main.post { MediaKeys.stop() }
-            feedJob?.cancel(); pingJob.cancel(); writerJob.cancel()
+            feedJob?.cancel(); pingJob.cancel(); writerJob.cancel(); parkJob?.cancel()
             out.close()
             close(sock)
         }
