@@ -57,15 +57,28 @@ object SystemFix {
             // Skjermens eget «start denne appen ved oppstart» → CarLink
             // Fabrikkens hjemmeskjerm av, så bilskjermen bare har CarLink å starte når bilen slås på
             // (bilskjermen avslutter alle apper når bilen slås av). Slås på igjen ved krasj-løkke.
+            // Bilskjermens egen hovedapp (com.spd.home) styrer oppstarten og byttet fra bilens bilde til
+            // Android – den skal ALDRI slås av. Slå den på igjen hvis en tidligere versjon slo den av.
+            val keep = listOf("com.spd.home")
+            Root.run(keep.joinToString("\n") { "pm enable $it" })
+            ctx.prefs().getString("disabledHomes", "")?.let { d ->
+                ctx.prefs().edit().putString("disabledHomes", d.split(',').filter { it.isNotBlank() && it !in keep }.joinToString(",")).apply()
+            }
             if (ctx.prefs().getBoolean("disableFactoryHome", true)) {
                 val homes = runCatching {
                     ctx.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
-                        .map { it.activityInfo.packageName }.filter { it != pkg && it != "com.android.settings" }.distinct()
+                        .map { it.activityInfo.packageName }
+                        .filter { it != pkg && it != "com.android.settings" && it !in keep && !it.startsWith("com.spd.") }.distinct()
                 }.getOrDefault(emptyList())
                 if (homes.isNotEmpty()) {
                     Root.run(homes.joinToString("\n") { "pm disable $it" } + "\npm set-home-activity $pkg/no.carlink.ReceiverActivity")
                     ctx.prefs().edit().putString("disabledHomes", homes.joinToString(",")).apply()
                     AppLog.i("app", "factory home switched off: ${homes.joinToString()}")
+                }
+            }
+            // Hva vises når CarLink starter? (hjelper å forstå oppstarten)
+            Root.run("dumpsys activity activities | grep -m 3 -E 'mResumedActivity|mFocusedActivity'")?.let { top ->
+                AppLog.i("app", "in front at start: " + top.lines().filter { "Activity" in it }.joinToString(" | ") { it.trim() }.take(300))
                 }
             }
             val cur = Root.run("settings get system SETTING_LUNCH_FIRST_APP")?.lines()?.lastOrNull { it.isNotBlank() }?.trim()

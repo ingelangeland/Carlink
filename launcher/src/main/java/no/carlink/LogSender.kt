@@ -12,12 +12,15 @@ object LogSender {
         AppLog.i("app", "log sent by user")
         runCatching { AppLog.saveNow() }
         val crash = Root.run("logcat -d -b crash -v time", 10).orEmpty().takeLast(60_000)
-        val sys = Root.run("logcat -d -v time -t 3000", 20)?.takeLast(400_000) ?: "(system log not available)"
+        // «GM» (Bluetooth-lyd) skriver hundrevis av linjer i sekundet – skjul den, så loggen rekker lenger tilbake
+        val sys = Root.run("logcat -d -v time -t 6000 GM:S chatty:S", 25)?.takeLast(500_000) ?: "(system log not available)"
+        val events = Root.run("logcat -d -b events -v time -t 400 am_proc_start:I am_focused_activity:I am_set_resumed_activity:I am_kill:I *:S", 10).orEmpty()
         val text = buildString {
             append("CarLink log ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())}\n\n")
             append("## CarLink events\n").append(AppLog.dump()).append("\n\n")
             JoyMouseService.instance?.learn?.let { append("## Joystick learning\n").append(it.summary()).append("\n\n") }
             append("## Crashes (system)\n").append(crash.ifBlank { "none" }).append("\n\n")
+            append("## App starts and switches\n").append(events.takeLast(60_000)).append("\n\n")
             append("## System log (last few minutes)\n").append(sys)
         }
         val name = "CarLink-log-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) + ".txt"
