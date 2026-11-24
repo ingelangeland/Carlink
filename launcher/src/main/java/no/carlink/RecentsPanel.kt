@@ -28,7 +28,11 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
     private data class Task(val pkg: String, val label: String, val icon: android.graphics.drawable.Drawable?)
 
     private val panel = LinearLayout(ctx)
-    override val body: View get() = panel
+    private val monitor = ResourceMonitor(ctx)
+    private val outer = LinearLayout(ctx)
+    override val body: View get() = outer
+    private var appMem: Map<String, Int> = emptyMap()
+    private val memLabels = HashMap<String, android.widget.TextView>()
     private val title = ctx.label("Open apps", 18f, 0xFFFFFFFF.toInt(), true).apply { gravity = Gravity.CENTER }
     private val empty = ctx.label("No other apps are open", 15f, 0xCCFFFFFF.toInt()).apply { gravity = Gravity.CENTER }
     private val scroll = android.widget.ScrollView(ctx)
@@ -57,7 +61,14 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
         panel.addView(closeAll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 10.dp })
         closeAll.setOnClickListener { closeAllApps() }
         panel.isClickable = true; rowsBox.isClickable = true
-        addView(panel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        // Åpne apper til venstre, systemressurser i et eget vindu til høyre
+        outer.orientation = LinearLayout.HORIZONTAL
+        outer.gravity = Gravity.CENTER_VERTICAL
+        outer.addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        outer.addView(monitor, LinearLayout.LayoutParams(300.dp, LinearLayout.LayoutParams.WRAP_CONTENT).apply { leftMargin = 28.dp })
+        monitor.isClickable = true
+        monitor.onAppMemory = { m -> appMem = m; memLabels.forEach { (pkg, tv) -> tv.text = memText(pkg) } }
+        addView(outer, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
     }
 
     override fun onStart(scope: CoroutineScope) {
@@ -65,10 +76,14 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
         this.scope = scope
     }
 
-    override fun onOpening() { refresh() }
+    override fun onOpening() { refresh(); monitor.start() }
+    override fun onClosing() { monitor.stop() }
+
+    private fun memText(pkg: String) = appMem[pkg]?.let { "$it MB" } ?: ""
 
     override fun onTheme(t: Ambient.Theme) {
         closeAll.background = rounded(Ambient.alpha(Ambient.deep(t.dark), 0x90), 20, 0x33FFFFFF)
+        monitor.background = rounded(Ambient.alpha(Ambient.deep(t.dark), 0x70), 22, 0x26FFFFFF)
     }
 
     private fun refresh() {
@@ -102,12 +117,12 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
         if (width == 0) return
         empty.visibility = if (tasks.isEmpty()) VISIBLE else GONE
         closeAll.visibility = if (tasks.size > 1) VISIBLE else GONE
-        val maxW = min((width * 0.8f).toInt(), 1300.dp)
+        val maxW = min((width * 0.8f).toInt() - 330.dp, 1300.dp)
         val cols = max(1, min(max(tasks.size, 1), maxW / colW))
         val rows = ceil(tasks.size / cols.toFloat()).toInt()
         (panel.layoutParams as LayoutParams).width = max(cols * colW, 360.dp)
         (scroll.layoutParams as LinearLayout.LayoutParams).height = min(rows * rowH, (height * 0.62f).toInt())
-        rowsBox.removeAllViews()
+        rowsBox.removeAllViews(); memLabels.clear()
         tasks.chunked(cols).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
             chunk.forEach { t -> row.addView(tile(t), LinearLayout.LayoutParams(colW, rowH)) }
@@ -126,6 +141,10 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
             addView(context.label(t.label, 13f, 0xFFFFFFFF.toInt()).apply {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER
                 maxWidth = colW - 30.dp; setPadding(0, 10.dp, 0, 0)
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            // Minnebruk for appen (fylles inn mens app-veksleren er åpen)
+            addView(context.label(memText(t.pkg), 12f, 0xB3FFFFFF.toInt()).apply {
+                gravity = Gravity.CENTER; memLabels[t.pkg] = this
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             isClickable = true
             setOnClickListener { switchTo(t) }

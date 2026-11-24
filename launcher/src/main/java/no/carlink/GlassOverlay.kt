@@ -60,6 +60,7 @@ abstract class GlassOverlay(ctx: Context, private val blurTarget: View) : Scoped
 
     protected open fun onTheme(t: Ambient.Theme) {}
     protected open fun onOpening() {}
+    protected open fun onClosing() {}
 
     fun open() {
         if (isOpen) return
@@ -74,6 +75,7 @@ abstract class GlassOverlay(ctx: Context, private val blurTarget: View) : Scoped
     fun close(immediate: Boolean = false) {
         if (!isOpen) return
         isOpen = false
+        onClosing()
         openCount = (openCount - 1).coerceAtLeast(0); Ambient.overlayOpen = openCount > 0
         if (immediate) { anim?.cancel(); setProgress(0f); visibility = INVISIBLE; frost.setImageDrawable(null); return }
         animateTo(0f, 130)
