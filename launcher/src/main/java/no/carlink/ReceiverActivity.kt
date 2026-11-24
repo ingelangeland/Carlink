@@ -344,6 +344,7 @@ class ReceiverActivity : AppCompatActivity() {
         setPadding(0, 8.dp, 0, 8.dp)
         isClickable = true
         setOnClickListener { click() }
+        isFocusable = false   // ingen markeringsfirkant fra bilens Tab-knapp
         addView(ImageView(context).apply { setImageResource(icon); setColorFilter(C.TEXT) }, LinearLayout.LayoutParams(30.dp, 30.dp))
         addView(context.label(text, 11f, C.SUB).apply { gravity = Gravity.CENTER })
     }

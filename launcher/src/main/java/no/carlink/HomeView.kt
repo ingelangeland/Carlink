@@ -93,6 +93,10 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
     private var media: Hub.Media? = null
 
     init {
+        // Ingen tastaturmarkering på hjemskjermen: bilens Tab/Enter-knapper ga ellers en firkant
+        // rundt knappene (f.eks. appskuffen) til skjermen ble trykket på. Musa og trykk virker som før.
+        isFocusable = false
+        descendantFocusability = FOCUS_BLOCK_DESCENDANTS
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(28.dp, 16.dp, 28.dp, 18.dp) }
 
         // ---------- toppstripe
