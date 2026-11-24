@@ -43,6 +43,8 @@ object SystemFix {
         val wanted = ctx.prefs().getBoolean("joyMouse", false) || JoyMouseService.homeOnly(ctx)
         if (!wanted || JoyMouseService.running()) return
         Thread {
+            Thread.sleep(3000)
+            if (JoyMouseService.running()) return@Thread   // koblet til mens vi ventet
             val c = JoyMouseService.COMPONENT
             val d = "$"
             // Ta den ut og inn igjen, så Android kobler den til på nytt

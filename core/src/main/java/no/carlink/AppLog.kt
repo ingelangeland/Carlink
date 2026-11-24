@@ -35,7 +35,7 @@ object AppLog {
         }
     }
 
-    fun i(tag: String, msg: String) = add("$tag: $msg")
+    fun i(tag: String, msg: String) = add("$tag: ${msg.replace(Regex("current_uid \\d+\\s*"), "")}")
 
     fun e(tag: String, msg: String, t: Throwable? = null) =
         add("$tag ERROR: $msg" + (t?.let { "\n" + android.util.Log.getStackTraceString(it).lines().take(25).joinToString("\n") } ?: ""))

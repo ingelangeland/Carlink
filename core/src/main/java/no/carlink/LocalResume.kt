@@ -81,7 +81,9 @@ object LocalResume {
         val playingAt = snap.second
         val aliveAt = snap.third
         if (pr.getString("lastSource", "phone") != "car") { AppLog.i("music", "no resume ($why): phone was the last source"); return }
-        if (playingAt == 0L || playingAt < aliveAt - 25_000) { AppLog.i("music", "no resume ($why): music was paused before the car was switched off"); return }
+        // Bilskjermen pauser musikken når bilen slås av, men CarLink lever en stund til før den
+        // avsluttes – derfor godtas det at musikken stoppet inntil 2 minutter før slutten
+        if (playingAt == 0L || playingAt < aliveAt - 120_000) { AppLog.i("music", "no resume ($why): music was paused before the car was switched off"); return }
         if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) return
         AppLog.i("music", "resuming $pkg ($why)")
         // 1) Appens egen økt finnes fortsatt (skjermen var bare i hvilemodus)
