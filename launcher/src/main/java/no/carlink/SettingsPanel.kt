@@ -231,13 +231,18 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             choice("Day level", null, day.map { "$it %" }, day.indexOf(Brightness.dayLevel(context)).let { if (it < 0) 1 else it }) {
                 context.prefs().edit().putInt("brightDay", day[it]).apply(); Brightness.preview(context, day[it])
             }
-            val night = intArrayOf(40, 30, 20, 15, 10, 5)
-            choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).let { if (it < 0) 3 else it }) {
+            val night = intArrayOf(50, 40, 30, 20, 15, 10, 5)
+            choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).let { if (it < 0) 4 else it }) {
                 context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.preview(context, night[it])
             }
-            choice("Car lights give the night level", "The sun decides: lights only dim the screen when the sun is this low (follows the seasons)",
-                listOf("Low sun", "Dusk", "Always", "Never"), Brightness.lightsRule(context).coerceIn(0, 3)) {
-                context.prefs().edit().putInt("brightLightsSun", it).apply(); Brightness.tick(context)
+            val after = intArrayOf(15, 30, 45, 60)
+            choice("Night after sunset", "Always the night level from this long after sunset until sunrise",
+                after.map { "$it min" }, after.indexOf(Brightness.nightAfter(context)).let { if (it < 0) 1 else it }) {
+                context.prefs().edit().putInt("brightNightAfter", after[it]).apply(); Brightness.tick(context)
+            }
+            choice("Car lights after sunset", "Before that time the car's lights can switch to the night level (dusk, tunnels)",
+                listOf("Dim right away", "Ignore"), if (Brightness.lightsAfterSunset(context)) 0 else 1) {
+                context.prefs().edit().putBoolean("brightLightsAfterSunset", it == 0).apply(); Brightness.tick(context)
             }
         }
         choice("Size of text and buttons", null, UiScale.labels.toList(),

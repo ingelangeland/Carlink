@@ -24,24 +24,44 @@ object Brightness {
     fun dayLevel(ctx: Context) = ctx.prefs().getInt("brightDay", 90)
     fun nightLevel(ctx: Context) = ctx.prefs().getInt("brightNight", 15)
 
-    /** Når bilens lys får gi nattnivå: 0 = lav sol (under 10°), 1 = skumring (under 3°), 2 = alltid, 3 = aldri. */
-    fun lightsRule(ctx: Context) = ctx.prefs().getInt("brightLightsSun", 0)
+    /** Minutter etter solnedgang før det alltid er nattnivå (15/30/45/60). */
+    fun nightAfter(ctx: Context) = ctx.prefs().getInt("brightNightAfter", 30)
+    /** Mellom solnedgang og nattgrensen: får bilens lys gi nattnivå? */
+    fun lightsAfterSunset(ctx: Context) = ctx.prefs().getBoolean("brightLightsAfterSunset", true)
 
-    private fun sunElevation(ctx: Context): Double {
+    private const val HORIZON = -0.833   // offisiell solnedgang (sola helt under horisonten)
+
+    private fun elevation(ctx: Context, t: Long): Double {
         val p = ctx.prefs()
-        return DayNight.sunElevation(p.getFloat("lastLat", 59.91f).toDouble(), p.getFloat("lastLon", 10.75f).toDouble(), System.currentTimeMillis())
+        return DayNight.sunElevation(p.getFloat("lastLat", 59.91f).toDouble(), p.getFloat("lastLon", 10.75f).toDouble(), t)
+    }
+
+    /** Minutter siden sola gikk ned, eller -1 hvis sola er oppe. */
+    private fun minutesSinceSunset(ctx: Context, now: Long = System.currentTimeMillis()): Int {
+        if (elevation(ctx, now) >= HORIZON) return -1
+        var t = now
+        for (k in 1..540) {                       // inntil 18 timer tilbake, 2 minutter av gangen
+            t -= 120_000
+            if (elevation(ctx, t) >= HORIZON) return k * 2
+        }
+        return 24 * 60                            // midtvinter uten soloppgang: alltid natt
+    }
+
+    /** Tidspunktet for dagens (eller siste) solnedgang, til visning. */
+    private fun sunsetTime(ctx: Context): Long? {
+        val now = System.currentTimeMillis()
+        val since = minutesSinceSunset(ctx, now)
+        if (since in 0..1000) return now - since * 60_000L
+        var t = now
+        for (k in 1..720) { t += 120_000; if (elevation(ctx, t) < HORIZON) return t }
+        return null
     }
 
     fun isNight(ctx: Context): Boolean {
-        val sun = sunElevation(ctx)
-        if (sun < -3.0) return true                       // sola har gått ned
-        if (!carLights(ctx)) return false
-        return when (lightsRule(ctx)) {
-            0 -> sun < 10.0                               // lav sol: ettermiddag, skumring, vinterdager
-            1 -> sun < 3.0                                // skumring
-            2 -> true
-            else -> false
-        }
+        val since = minutesSinceSunset(ctx)
+        if (since < 0) return false                                   // sola er oppe: alltid dag
+        if (since >= nightAfter(ctx)) return true                    // godt etter solnedgang: alltid natt
+        return lightsAfterSunset(ctx) && carLights(ctx)              // skumring: bilens lys bestemmer
     }
 
     /** Bilens lys-signal: bilskjermens egen innstilling (1 = lys på), eller Androids nattmodus-flagg. */
@@ -141,14 +161,17 @@ object Brightness {
 
     fun status(ctx: Context): String {
         val night = isNight(ctx)
-        val lights = carLights(ctx)
+        val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        val sunset = sunsetTime(ctx)
+        val times = sunset?.let { " · sunset ${fmt.format(it)}, night from ${fmt.format(it + nightAfter(ctx) * 60_000L)}" } ?: ""
+        val since = minutesSinceSunset(ctx)
         val why = when {
-            night && !lights -> "after sunset"
-            night -> "car lights on, sun is low"
-            lights && lightsRule(ctx) != 3 -> "car lights on, but the sun is still high (%.0f°)".format(sunElevation(ctx))
-            else -> "daytime"
+            since < 0 -> "sun is up"
+            night && since >= nightAfter(ctx) -> "after sunset"
+            night -> "dusk and car lights on"
+            else -> "dusk"
         }
-        return "Now: ${if (night) "night" else "day"} level ($why)"
+        return "Now: ${if (night) "night" else "day"} level ($why)$times"
     }
 
     private var before = -1
