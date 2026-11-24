@@ -46,6 +46,8 @@ object Favorites {
         save(ctx, l)
     }
 
+    fun set(ctx: Context, l: List<ComponentName>) = save(ctx, l)
+
     fun position(ctx: Context, cn: ComponentName) = list(ctx).indexOf(cn)
     fun count(ctx: Context) = list(ctx).size
 

@@ -14,7 +14,6 @@ import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.TextClock
 import android.widget.TextView
@@ -321,8 +320,8 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
             }
         }
         favGlass.clear()
-        val pills = favs.map { f -> favPill(f.icon, f.label, false, { Launch.app(context, f.cn, Launch.defaultMode(context)) }) { v -> favMenu(v, f.cn) } }.toMutableList()
-        if (favs.size < 6) pills += favPill(context.getDrawable(R.drawable.ic_add), "Add", true, { actions.openApps() }, null)
+        val pills = favs.map { f -> favPill(f.icon, f.label, false, { Launch.app(context, f.cn, Launch.defaultMode(context)) }) { _ -> HomeEditor.appOptions(context, f.cn, f.label) } }.toMutableList()
+        if (favs.size < 6) pills += favPill(context.getDrawable(R.drawable.ic_add), "Add", true, { HomeEditor.show(context) }) { _ -> HomeEditor.show(context) }
         favPills = pills
         layoutFavGrid()
         applyTheme(Ambient.theme.value)
@@ -403,27 +402,6 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         (leftCol.parent as? View)?.requestLayout()
     }
 
-    private fun favMenu(anchor: View, cn: ComponentName) {
-        PopupMenu(context, anchor).apply {
-            menu.add(0, 1, 0, "Open side by side (split screen)")
-            menu.add(0, 2, 1, "Open as floating window")
-            val pos = Favorites.position(context, cn)
-            if (pos > 0) menu.add(0, 4, 2, "Move forward")
-            if (pos in 0 until Favorites.count(context) - 1) menu.add(0, 5, 3, "Move back")
-            menu.add(0, 3, 4, "Remove from Home")
-            setOnMenuItemClickListener {
-                when (it.itemId) {
-                    1 -> Launch.app(context, cn, Launch.Mode.ADJACENT)
-                    2 -> Launch.app(context, cn, Launch.Mode.WINDOW)
-                    3 -> Favorites.remove(context, cn)
-                    4 -> Favorites.move(context, cn, -1)
-                    5 -> Favorites.move(context, cn, +1)
-                }
-                true
-            }
-            show()
-        }
-    }
 
     // ------------------------------------------------------------------ byggeklosser
 

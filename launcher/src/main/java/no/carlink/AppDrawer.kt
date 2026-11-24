@@ -17,7 +17,6 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import kotlinx.coroutines.CoroutineScope
@@ -183,18 +182,18 @@ class AppDrawer(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarget) 
         close(immediate = mode == Launch.Mode.FULL)
     }
 
+    /** Valg for en app (dialog i stedet for liten meny – virker godt med joysticken). */
     private fun appMenu(anchor: View, a: AppCatalog.App) {
-        PopupMenu(context, anchor).apply {
-            Launch.Mode.entries.forEachIndexed { i, m -> menu.add(0, i, i, "Open: ${m.label}") }
-            val fav = Favorites.contains(context, a.component)
-            menu.add(0, 100, 100, if (fav) "Remove from Home" else "Add to Home")
-            setOnMenuItemClickListener {
-                if (it.itemId == 100) {
-                    if (fav) Favorites.remove(context, a.component) else Favorites.add(context, a.component)
-                } else openApp(a, Launch.Mode.entries[it.itemId])
-                true
-            }
-            show()
-        }
+        val fav = Favorites.contains(context, a.component)
+        val items = Launch.Mode.entries.map { m -> "Open: ${m.label}" to { openApp(a, m) } } +
+            ((if (fav) "Remove from Home" else "Add to Home") to {
+                if (fav) Favorites.remove(context, a.component)
+                else if (Favorites.count(context) >= HomeEditor.MAX)
+                    android.widget.Toast.makeText(context, "Home is full (${HomeEditor.MAX}) – remove one first", android.widget.Toast.LENGTH_LONG).show()
+                else Favorites.add(context, a.component)
+            })
+        android.app.AlertDialog.Builder(context).setTitle(a.label)
+            .setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }
+            .setNegativeButton("Cancel", null).show()
     }
 }
