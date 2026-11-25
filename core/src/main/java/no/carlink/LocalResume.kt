@@ -123,7 +123,7 @@ object LocalResume {
         val t = SystemClock.elapsedRealtime()
         // Bilens startbilde vises: start musikken når det er ferdig
         if (Hub.introUntil > t) { main.postDelayed({ resumeNow(ctx, pkg, why) }, Hub.introUntil - t + 300); return }
-        if (t - lastResume < 20_000) return            // allerede i gang (oppstart og telefon samtidig)
+        if (t - lastResume < 45_000) return            // allerede i gang (oppstart og telefon samtidig)
         lastResume = t
         AppLog.i("music", "resuming $pkg ($why)")
         if (Hub.localMedia.value?.playing == true) return
@@ -147,15 +147,20 @@ object LocalResume {
         waitForInternet(ctx, SystemClock.elapsedRealtime(), minWaitMs = if (alive) 0 else 3500) { waited ->
             AppLog.i("music", "internet ready after ${waited / 1000} s – pressing play")
             play(ctx, pkg)
-            main.postDelayed({
-                if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) {
-                    AppLog.i("music", "$pkg is playing"); return@postDelayed
-                }
-                AppLog.i("music", "$pkg not playing yet – trying once more")
-                play(ctx, pkg)
-                main.postDelayed({ if (Hub.localMedia.value?.playing != true) { AppLog.i("music", "still not playing – play button to $pkg"); playButton(ctx, pkg) } }, 3000)
-            }, 10_000)
+            retryPlay(ctx, pkg, 1)
         }
+    }
+
+    /** Sjekk hvert 2. sekund at det spiller; prøv igjen (vekselvis direkte og med play-knappen), høyst 10 ganger. */
+    private fun retryPlay(ctx: Context, pkg: String, n: Int) {
+        main.postDelayed({
+            if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) {
+                AppLog.i("music", "$pkg is playing (after ${n * 2} s)"); return@postDelayed
+            }
+            if (n >= 10) { AppLog.i("music", "$pkg still not playing after 20 s – giving up"); return@postDelayed }
+            if (n % 2 == 1) play(ctx, pkg) else playButton(ctx, pkg)
+            retryPlay(ctx, pkg, n + 1)
+        }, 2000)
     }
 
     private fun play(ctx: Context, pkg: String) {

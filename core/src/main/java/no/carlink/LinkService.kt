@@ -598,7 +598,7 @@ class LinkService : Service() {
         val wm = applicationContext.getSystemService(WifiManager::class.java) ?: return
         while (coroutineContext.isActive) {
             while (coroutineContext.isActive && (Hub.parked.value || !getSystemService(PowerManager::class.java).isInteractive)) delay(2000)
-            var last = ""; var seen = false; var lastKick = -10_000L; var kicks = 0; var rootScanAt = -1
+            var last = ""; var seen = false; var lastKick = -10_000L; var kicks = 0; var wifiOnAsked = false
             val t0 = android.os.SystemClock.elapsedRealtime()
             while (coroutineContext.isActive && !Hub.connected.value && android.os.SystemClock.elapsedRealtime() - t0 < 90_000) {
                 @Suppress("DEPRECATION")
@@ -615,46 +615,36 @@ class LinkService : Service() {
                     }
                 }
                 if (st != last) { ConnTimeline.mark(st); last = st }
-                // Er hotspoten (sist brukte nett) synlig i Wi-Fi-søket ennå?
+                // Er hotspoten (sist brukte nett) synlig i Wi-Fi-søket ennå? (bare til tidslinjen)
                 val ssid = prefs().getString("hotspotSsid", null)
                 if (ssid != null && !seen) {
                     @Suppress("DEPRECATION")
                     val hit = runCatching { wm.scanResults }.getOrNull()?.firstOrNull { it.SSID == ssid }
-                    if (hit != null) { seen = true; ConnTimeline.mark("hotspot visible (${if (hit.frequency > 4000) "5 GHz" else "2.4 GHz"}, ${hit.level} dBm)") }
-                    else if (kicks > 0 && kicks != rootScanAt) {
-                        rootScanAt = kicks
-                        val line = withContext(Dispatchers.IO) { rootSh("wpa_cli -i wlan0 scan_results 2>/dev/null | grep -F \"$ssid\" | head -1") }.trim()
-                        if (line.isNotBlank()) {
-                            seen = true
-                            val f = line.split(Regex("\\s+")).filter { it.isNotBlank() }
-                            val i = f.indexOfFirst { Regex("([0-9a-f]{2}:){5}[0-9a-f]{2}").matches(it) }
-                            val freq = f.getOrNull(i + 1)?.toIntOrNull() ?: 0
-                            ConnTimeline.mark("hotspot visible (${if (freq > 4000) "5 GHz" else "2.4 GHz"}, ${f.getOrNull(i + 2)} dBm)")
-                        }
-                    }
+                    if (hit != null) { seen = true; ConnTimeline.mark("hotspot visible (${if (hit.frequency > 4000) "5 GHz" else "2.4 GHz"}${if (hit.level in -100..0) ", ${hit.level} dBm" else ""})") }
                 }
-                // Ikke i gang med å koble til: be Wi-Fi lete og koble til med en gang (root) – etter 1,5 s og så hvert 5. s
                 val el = android.os.SystemClock.elapsedRealtime() - t0
-                if (el > 1500 && el - lastKick > 5000 && kicks < 6 &&
-                    st in setOf("Wi-Fi off", "Wi-Fi on, not connected", "Wi-Fi searching")) {
+                // Wi-Fi av (bilskjermen slår det av i hvile): slå på med en gang
+                if (st == "Wi-Fi off" && !wifiOnAsked) {
+                    wifiOnAsked = true
+                    @Suppress("DEPRECATION") val ok = runCatching { wm.setWifiEnabled(true) }.getOrDefault(false)
+                    if (!ok) withContext(Dispatchers.IO) { rootSh("svc wifi enable") }
+                    ConnTimeline.mark("turned Wi-Fi on")
+                }
+                // Be Android koble til hotspoten med en gang (i stedet for å vente på neste runde av seg selv).
+                // NB: ingen ekstra søk – et nytt søk avbryter tilkoblingen, og Android kobler til så snart søket er ferdig.
+                if (wm.isWifiEnabled && el - lastKick > 6000 && kicks < 5 &&
+                    st in setOf("Wi-Fi on, not connected", "Wi-Fi searching")) {
                     lastKick = el; kicks++
-                    // Be Android selv koble til hotspoten (lov for apper på denne Android-versjonen)
-                    val hsSsid = prefs().getString("hotspotSsid", null)
-                    val netNote = runCatching {
+                    val note = runCatching {
                         @Suppress("DEPRECATION")
-                        val cfg = wm.configuredNetworks?.firstOrNull { it.SSID?.trim('"') == hsSsid }
-                        if (cfg == null) "no saved network" else {
+                        val cfg = wm.configuredNetworks?.firstOrNull { it.SSID?.trim('"') == ssid }
+                        if (cfg == null) "no saved hotspot yet" else {
                             @Suppress("DEPRECATION") val a = wm.enableNetwork(cfg.networkId, true)
                             @Suppress("DEPRECATION") val b = wm.reconnect()
-                            @Suppress("DEPRECATION") wm.startScan()
-                            "android connect ${if (a && b) "ok" else "refused"}"
+                            if (a && b) "ok" else "refused"
                         }
-                    }.getOrElse { "android connect: ${it.javaClass.simpleName}" }
-                    val out = withContext(Dispatchers.IO) {
-                        rootSh("svc wifi enable\n(wpa_cli -i wlan0 scan; wpa_cli -i wlan0 reconnect) 2>&1 | tr '\\n' ' '\n" +
-                            "cmd wifi start-scan 2>&1 | head -1").trim().take(80)
-                    }
-                    ConnTimeline.mark("asked Wi-Fi to search and connect (#$kicks: $netNote; ${out.replace("Unknown command: start-scan", "").trim().ifBlank { "ok" }})")
+                    }.getOrElse { it.javaClass.simpleName }
+                    ConnTimeline.mark("asked Android to join the hotspot (#$kicks: $note)")
                 }
                 if (st == "Wi-Fi has an address") {
                     @Suppress("DEPRECATION")
