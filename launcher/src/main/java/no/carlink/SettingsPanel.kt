@@ -64,6 +64,8 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
     private val page = LinearLayout(ctx)
     private val pageCard = FrameLayout(ctx)
     private var current = Group.MUSIC
+    /** Undermeny som er åpen i gjeldende gruppe (null = gruppens hovedside). */
+    private var sub: String? = null
     private var theme = Ambient.theme.value
 
     init {
@@ -111,7 +113,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
 
     /** Åpne direkte på en gruppe (brukes av simuleringen). */
     fun showPage(name: String) {
-        runCatching { Group.valueOf(name) }.getOrNull()?.let { current = it; if (isOpen) build() }
+        runCatching { Group.valueOf(name) }.getOrNull()?.let { current = it; sub = null; if (isOpen) build() }
     }
 
     override fun onTheme(t: Ambient.Theme) {
@@ -128,7 +130,17 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         Group.entries.forEachIndexed { i, g -> groups.addView(groupPill(g, g == current, t),
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply { if (i > 0) topMargin = 6.dp }) }
         page.removeAllViews()
-        page.addView(context.label(current.label, 18f, C.TEXT, true).apply { setPadding(0, 0, 0, 6.dp) })
+        val s = sub
+        if (s == null) page.addView(context.label(current.label, 18f, C.TEXT, true).apply { setPadding(0, 0, 0, 6.dp) })
+        else page.addView(LinearLayout(context).apply {
+            // «‹ Skjerm · Lysstyrke» – trykk for å gå tilbake
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, 6.dp)
+            addView(context.label("‹", 26f, C.TEXT, true).apply { setPadding(0, 0, 12.dp, 4.dp) })
+            addView(context.label(current.label + "  ·  ", 18f, 0xA6FFFFFF.toInt()))
+            addView(context.label(s, 18f, C.TEXT, true))
+            setOnClickListener { sub = null; build() }
+        })
         when (current) {
             Group.MUSIC -> music()
             Group.MAP -> map()
@@ -167,107 +179,138 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
 
     private fun joystick() {
         val mouse = context.prefs().getBoolean("joyMouse", false)
-        toggle("Joystick as mouse", "A dot follows the Remote Touch in all apps – press to tap, hold and move to scroll", mouse) {
-            host.joyMouseChanged(it)
-        }
-        toggle("Car system only by double-clicking Home", "The scroll button scrolls instead of opening the car's own system – the reversing camera works as before",
-            JoyMouseService.homeOnly(context)) {
-            context.prefs().edit().putBoolean("carHomeOnly", it).apply()
-            if (it) host.joyMouseChanged(context.prefs().getBoolean("joyMouse", false))
-        }
-        MenuButton.Press.entries.forEach { p ->
-            action(p.title, MenuButton.label(context, MenuButton.get(context, p))) { pickMenuAction(p) }
-        }
-        if (mouse) choice("Snap to buttons", "The dot is pulled towards the nearest thing you can tap",
-            listOf("Off", "Light", "Strong"), context.prefs().getInt("joySnap", 1)) {
-            context.prefs().edit().putInt("joySnap", it).apply()
-        }
-        if (mouse) choice("Up and down", "Flip if the dot moves the wrong way vertically",
-            listOf("Normal", "Inverted"), if (context.prefs().getBoolean("joyInvertY", false)) 1 else 0) {
-            context.prefs().edit().putBoolean("joyInvertY", it == 1).apply()
-        }
-        if (!mouse) choice("Joystick steps", "The car sends several signals per push – «One per push» moves one item at a time",
-            listOf("One per push", "Every signal"), if (context.prefs().getBoolean("joyCollapse", true)) 0 else 1) {
-            context.prefs().edit().putBoolean("joyCollapse", it == 0).apply()
-        }
-        choice("Dot as mouse pointer", "Highly visible dot in the cover color",
-            PointerRoot.Size.entries.map { it.label }, PointerRoot.size(context).ordinal) {
-            PointerRoot.setSize(context, PointerRoot.Size.entries[it]); host.pointerChanged()
-        }
-        choice("Sound over buttons", "A soft sound when the dot moves onto something you can tap",
-            HoverSound.Sound.entries.map { it.label }, HoverSound.sound(context).ordinal) { HoverSound.set(context, s = HoverSound.Sound.entries[it]) }
-        if (HoverSound.sound(context) != HoverSound.Sound.OFF) {
-            choice("Tone", null, HoverSound.Tone.entries.map { it.label }, HoverSound.tone(context).ordinal) { HoverSound.set(context, t = HoverSound.Tone.entries[it]) }
-            choice("Sound volume", null, HoverSound.Level.entries.map { it.label }, HoverSound.level(context).ordinal) { HoverSound.set(context, l = HoverSound.Level.entries[it]) }
-        }
-        if (mouse) {
-            val learn = JoyMouseService.instance?.learn
-            toggle("Learn from my use", learn?.summary() ?: "Learns your joystick's range, how steady it is and where you miss",
-                context.prefs().getBoolean("joyLearn", true)) { context.prefs().edit().putBoolean("joyLearn", it).apply() }
-            action("Reset what it has learned", null) {
-                JoyMouseService.instance?.learn?.reset()
-                android.widget.Toast.makeText(context, "Learning reset", android.widget.Toast.LENGTH_SHORT).show()
+        when (sub) {
+            null -> {
+                toggle("Joystick as mouse", "A dot follows the Remote Touch in all apps – press to tap, hold and move to scroll", mouse) {
+                    host.joyMouseChanged(it)
+                }
+                if (mouse) submenu("Pointer", "Snap to buttons, direction, dot and sound")
+                if (mouse) submenu("Learning", "Learn from my use, reset, mouse log")
+                submenu("Car buttons", "Home, Menu button and joystick steps")
+                submenu("Tools", "Train the joystick, system report")
+            }
+            "Pointer" -> {
+                choice("Snap to buttons", "The dot is pulled towards the nearest thing you can tap",
+                    listOf("Off", "Light", "Strong"), context.prefs().getInt("joySnap", 1)) {
+                    context.prefs().edit().putInt("joySnap", it).apply()
+                }
+                choice("Up and down", "Flip if the dot moves the wrong way vertically",
+                    listOf("Normal", "Inverted"), if (context.prefs().getBoolean("joyInvertY", false)) 1 else 0) {
+                    context.prefs().edit().putBoolean("joyInvertY", it == 1).apply()
+                }
+                choice("Dot as mouse pointer", "Highly visible dot in the cover color",
+                    PointerRoot.Size.entries.map { it.label }, PointerRoot.size(context).ordinal) {
+                    PointerRoot.setSize(context, PointerRoot.Size.entries[it]); host.pointerChanged()
+                }
+                choice("Sound over buttons", "A soft sound when the dot moves onto something you can tap",
+                    HoverSound.Sound.entries.map { it.label }, HoverSound.sound(context).ordinal) { HoverSound.set(context, s = HoverSound.Sound.entries[it]) }
+                if (HoverSound.sound(context) != HoverSound.Sound.OFF) {
+                    choice("Tone", null, HoverSound.Tone.entries.map { it.label }, HoverSound.tone(context).ordinal) { HoverSound.set(context, t = HoverSound.Tone.entries[it]) }
+                    choice("Sound volume", null, HoverSound.Level.entries.map { it.label }, HoverSound.level(context).ordinal) { HoverSound.set(context, l = HoverSound.Level.entries[it]) }
+                }
+            }
+            "Learning" -> {
+                val learn = JoyMouseService.instance?.learn
+                toggle("Learn from my use", learn?.summary() ?: "Learns your joystick's range, how steady it is and where you miss",
+                    context.prefs().getBoolean("joyLearn", true)) { context.prefs().edit().putBoolean("joyLearn", it).apply() }
+                action("Reset what it has learned", null) {
+                    JoyMouseService.instance?.learn?.reset()
+                    android.widget.Toast.makeText(context, "Learning reset", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                action("Record mouse log (60 s)", "Use the joystick normally for a minute – the log is sent to the phone for Claude") {
+                    val svc = JoyMouseService.instance
+                    if (svc == null) android.widget.Toast.makeText(context, "Joystick as mouse isn't running", android.widget.Toast.LENGTH_LONG).show()
+                    else { svc.startLog(60); android.widget.Toast.makeText(context, "Recording for 60 seconds …", android.widget.Toast.LENGTH_LONG).show(); host.closeSettings() }
+                }
+            }
+            "Car buttons" -> {
+                toggle("Car system only by double-clicking Home", "The scroll button scrolls instead of opening the car's own system – the reversing camera works as before",
+                    JoyMouseService.homeOnly(context)) {
+                    context.prefs().edit().putBoolean("carHomeOnly", it).apply()
+                    if (it) host.joyMouseChanged(context.prefs().getBoolean("joyMouse", false))
+                }
+                MenuButton.Press.entries.forEach { p ->
+                    action(p.title, MenuButton.label(context, MenuButton.get(context, p))) { pickMenuAction(p) }
+                }
+                if (!mouse) choice("Joystick steps", "The car sends several signals per push – «One per push» moves one item at a time",
+                    listOf("One per push", "Every signal"), if (context.prefs().getBoolean("joyCollapse", true)) 0 else 1) {
+                    context.prefs().edit().putBoolean("joyCollapse", it == 0).apply()
+                }
+            }
+            "Tools" -> {
+                action("Train the joystick", "Records the movements so control can be tuned to your car") { host.openJoystickTraining() }
+                action("System report", "Finds what in the car turns the joystick into jumps – sent to the phone") { host.systemReport() }
             }
         }
-        if (mouse) action("Record mouse log (60 s)", "Use the joystick normally for a minute – the log is sent to the phone for Claude") {
-            val svc = JoyMouseService.instance
-            if (svc == null) android.widget.Toast.makeText(context, "Joystick as mouse isn't running", android.widget.Toast.LENGTH_LONG).show()
-            else { svc.startLog(60); android.widget.Toast.makeText(context, "Recording for 60 seconds …", android.widget.Toast.LENGTH_LONG).show(); host.closeSettings() }
-        }
-        action("Train the joystick", "Records the movements so control can be tuned to your car") { host.openJoystickTraining() }
-        action("System report", "Finds what in the car turns the joystick into jumps – sent to the phone") { host.systemReport() }
     }
 
     private fun screen() {
-        val b = Brightness.enabled(context)
-        toggle("Automatic brightness", if (b) Brightness.status(context) + " · tap a level to try it for 4 s"
-            else "Day level by day, night level after sunset – or when the car's lights are on after the time below", b) {
-            context.prefs().edit().putBoolean("brightAuto", it).apply()
-            if (it) Brightness.tick(context) else Brightness.takeOver(context, false)
-            post { refresh() }
-        }
-        if (b) {
-            val day = intArrayOf(100, 90, 80, 70, 60, 50)
-            choice("Day level", null, day.map { "$it %" }, day.indexOf(Brightness.dayLevel(context)).let { if (it < 0) 1 else it }) {
-                context.prefs().edit().putInt("brightDay", day[it]).apply(); Brightness.preview(context, day[it])
+        when (sub) {
+            null -> {
+                submenu("Brightness", if (Brightness.enabled(context)) Brightness.status(context) else "Automatic brightness is off")
+                submenu("Car screen", "Start screen, climate pop-up and side panel")
+                submenu("Display", "Text size, animations and system bars")
             }
-            val night = intArrayOf(50, 40, 30, 20, 15, 10, 5)
-            choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).let { if (it < 0) 4 else it }) {
-                context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.preview(context, night[it])
+            "Brightness" -> {
+                val b = Brightness.enabled(context)
+                toggle("Automatic brightness", if (b) Brightness.status(context) + " · tap a level to try it for 4 s"
+                    else "Day level by day, night level at night, with a gentle change at dusk and dawn", b) {
+                    context.prefs().edit().putBoolean("brightAuto", it).apply()
+                    if (it) Brightness.tick(context) else Brightness.takeOver(context, false)
+                    post { refresh() }
+                }
+                if (b) {
+                    val day = intArrayOf(100, 90, 80, 70, 60, 50)
+                    choice("Day level", null, day.map { "$it %" }, day.indexOf(Brightness.dayLevel(context)).let { if (it < 0) 1 else it }) {
+                        context.prefs().edit().putInt("brightDay", day[it]).apply(); Brightness.preview(context, day[it])
+                    }
+                    val night = intArrayOf(50, 40, 30, 20, 15, 10, 5)
+                    choice("Night level", null, night.map { "$it %" }, night.indexOf(Brightness.nightLevel(context)).let { if (it < 0) 4 else it }) {
+                        context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.preview(context, night[it])
+                    }
+                    val after = intArrayOf(30, 45, 60, 75, 90, 120)
+                    choice("Dusk and dawn", "After sunset the light glides down to the night level over this time, and up again the same time before sunrise. In daylight the car's lights dim it (tunnels)",
+                        after.map { "$it min" }, after.indexOf(Brightness.nightAfter(context)).let { if (it < 0) 0 else it }) {
+                        context.prefs().edit().putInt("brightNightAfter", after[it]).apply(); Brightness.tick(context)
+                    }
+                    choice("Curve", "How the light moves through dusk and dawn",
+                        Brightness.curves.toList(), Brightness.curve(context)) {
+                        context.prefs().edit().putInt("brightCurve", it).apply(); Brightness.tick(context)
+                    }
+                }
             }
-            val after = intArrayOf(30, 45, 60, 75, 90, 120)
-            choice("Dusk and dawn", "After sunset the light glides evenly down to the night level over this time, and up again the same time before sunrise. In daylight the car's lights dim it (tunnels)",
-                after.map { "$it min" }, after.indexOf(Brightness.nightAfter(context)).let { if (it < 0) 0 else it }) {
-                context.prefs().edit().putInt("brightNightAfter", after[it]).apply(); Brightness.tick(context)
+            "Car screen" -> {
+                choice("Car's start screen", "When the car is switched on, show the car's own start screen this long before CarLink",
+                    CarIntro.choices.map { if (it == 0) "Off" else "$it s" }, CarIntro.choices.indexOf(CarIntro.seconds(context)).let { if (it < 0) 2 else it }) {
+                    context.prefs().edit().putInt("introSecs", CarIntro.choices[it]).apply()
+                }
+                // Bilskjermens eget klimapanel (dukker opp ved endringer i klimaanlegget). Dør-varselet er en egen innstilling og røres ikke.
+                val airOn = runCatching { android.provider.Settings.System.getInt(context.contentResolver, "SETTING_FACTORY_AIR") }.getOrDefault(1) != 0
+                choice("Climate pop-up", "The car screen's own climate panel. Open-door warnings are always shown",
+                    listOf("Show", "Hide"), if (airOn) 0 else 1) {
+                    val v = if (it == 0) 1 else 0
+                    AppLog.i("app", "climate pop-up ${if (v == 1) "shown" else "hidden"}")
+                    Thread { Root.run("settings put system SETTING_FACTORY_AIR $v") }.start()
+                }
+                choice("Car screen side panel", "The tab on the edge of the screen from the car screen's own home screen",
+                    listOf("Show", "Hide"), if (context.prefs().getBoolean("hideSidePanel", false)) 1 else 0) {
+                    SystemFix.sidePanel(context, it == 0)
+                }
             }
-        }
-        choice("Car's start screen", "When the car is switched on, show the car's own start screen this long before CarLink",
-            CarIntro.choices.map { if (it == 0) "Off" else "$it s" }, CarIntro.choices.indexOf(CarIntro.seconds(context)).let { if (it < 0) 2 else it }) {
-            context.prefs().edit().putInt("introSecs", CarIntro.choices[it]).apply()
-        }
-        // Bilskjermens eget klimapanel (dukker opp ved endringer i klimaanlegget). Dør-varselet er en egen innstilling og røres ikke.
-        val airOn = runCatching { android.provider.Settings.System.getInt(context.contentResolver, "SETTING_FACTORY_AIR") }.getOrDefault(1) != 0
-        choice("Climate pop-up", "The car screen's own climate panel. Open-door warnings are always shown",
-            listOf("Show", "Hide"), if (airOn) 0 else 1) {
-            val v = if (it == 0) 1 else 0
-            AppLog.i("app", "climate pop-up ${if (v == 1) "shown" else "hidden"}")
-            Thread { Root.run("settings put system SETTING_FACTORY_AIR $v") }.start()
-        }
-        choice("Car screen side panel", "The tab on the edge of the screen from the car screen's own home screen",
-            listOf("Show", "Hide"), if (context.prefs().getBoolean("hideSidePanel", false)) 1 else 0) {
-            SystemFix.sidePanel(context, it == 0)
-        }
-        choice("Size of text and buttons", null, UiScale.labels.toList(),
-            UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
-            context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()
-        }
-        choice("Android animations", "Speed of opening apps and switching screens in the whole system",
-            listOf("Normal", "Fast", "Off"), context.prefs().getInt("sysAnim", 0)) {
-            context.prefs().edit().putInt("sysAnim", it).apply(); host.systemAnimationsChanged(it)
-        }
-        choice("Status and navigation bars", "Hidden: swipe in from the edge to show them – they hide again by themselves",
-            listOf("Hide automatically", "Always show"), if (context.prefs().getBoolean("showBars", false)) 1 else 0) {
-            context.prefs().edit().putBoolean("showBars", it == 1).apply(); host.systemBarsChanged()
+            "Display" -> {
+                choice("Size of text and buttons", null, UiScale.labels.toList(),
+                    UiScale.factors.indexOfFirst { it == UiScale.factor(context) }.coerceAtLeast(1)) {
+                    context.prefs().edit().putFloat("uiScale", UiScale.factors[it]).apply(); host.uiScaleChanged()
+                }
+                choice("Android animations", "Speed of opening apps and switching screens in the whole system",
+                    listOf("Normal", "Fast", "Off"), context.prefs().getInt("sysAnim", 0)) {
+                    context.prefs().edit().putInt("sysAnim", it).apply(); host.systemAnimationsChanged(it)
+                }
+                choice("Status and navigation bars", "Hidden: swipe in from the edge to show them – they hide again by themselves",
+                    listOf("Hide automatically", "Always show"), if (context.prefs().getBoolean("showBars", false)) 1 else 0) {
+                    context.prefs().edit().putBoolean("showBars", it == 1).apply(); host.systemBarsChanged()
+                }
+            }
         }
     }
 
@@ -324,7 +367,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = 12.dp })
             setOnClickListener {
                 if (g == Group.ANDROID) { host.openAndroidSettings(); return@setOnClickListener }
-                current = g; build()
+                current = g; sub = null; build()
             }
         }
     }
@@ -393,6 +436,9 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
                 } else { MenuButton.set(context, p, keys[i]); build() }
             }.show()
     }
+
+    /** Rad som åpner en undermeny. */
+    private fun submenu(title: String, summary: String?) = action(title, summary) { sub = title; build() }
 
     private fun action(title: String, sub: String?, run: () -> Unit) {
         val r = rowBox()

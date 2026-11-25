@@ -69,8 +69,18 @@ object Brightness {
         return (minOf(since, until).toDouble() / nightAfter(ctx)).coerceIn(0.0, 1.0)
     }
 
+    /** Formen på overgangen i skumringen (morgenen er speilvendt). */
+    val curves = arrayOf("Even", "Gentle start", "Quick start", "Smooth")
+    fun curve(ctx: Context) = ctx.prefs().getInt("brightCurve", 0).coerceIn(0, curves.size - 1)
+    private fun shape(ctx: Context, x: Double) = when (curve(ctx)) {
+        1 -> x * x                              // holder seg lys lenge, demper mest mot slutten
+        2 -> 1 - (1 - x) * (1 - x)              // demper mest med en gang
+        3 -> x * x * (3 - 2 * x)                // rolig – raskest i midten – rolig
+        else -> x                               // jevnt
+    }
+
     fun levelNow(ctx: Context): Int {
-        val d = darkness(ctx)
+        val d = darkness(ctx).let { if (it > 0.0 && it < 1.0) shape(ctx, it) else it }
         return Math.round(dayLevel(ctx) + (nightLevel(ctx) - dayLevel(ctx)) * d).toInt()
     }
 
