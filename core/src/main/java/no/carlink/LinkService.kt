@@ -533,6 +533,7 @@ class LinkService : Service() {
     }
 
     @SuppressLint("MissingPermission")
+    private var btFails = 0
     private suspend fun btListenLoop(adapter: BluetoothAdapter, incoming: Channel<Pair<Socket, Network?>>) {
         while (coroutineContext.isActive) {
             try {
@@ -583,8 +584,11 @@ class LinkService : Service() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (!rxBusy.get()) setStatus("Bluetooth: ${e.message ?: e.javaClass.simpleName}")
-                delay(2000)
+                // Bluetooth-oppkobling er valgfri (telefonen finner skjermen over Wi-Fi). Ikke vis feilen som status,
+                // logg den én gang, og prøv sjeldnere – bilskjermens Bluetooth tar ikke imot slike tilkoblinger.
+                btFails++
+                if (btFails == 1) AppLog.i("link", "Bluetooth hand-off not available (${e.message ?: e.javaClass.simpleName}) – using Wi-Fi only")
+                delay(if (btFails < 3) 2000 else 30_000)
             }
         }
     }

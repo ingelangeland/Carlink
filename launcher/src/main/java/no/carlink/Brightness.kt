@@ -168,6 +168,7 @@ object Brightness {
     private const val BACKLIGHT = "/sys/class/leds/lcd-backlight/brightness"
     @Volatile private var hwBusy = false
     private var lastHw = -1
+    private var lastHwLog = 0L
 
     private fun writeHardware(ctx: Context, v: Int, why: String) {
         if (hwBusy) return
@@ -176,7 +177,9 @@ object Brightness {
             val cur = Root.run("cat $BACKLIGHT")?.lines()?.lastOrNull { it.isNotBlank() }?.trim()?.toIntOrNull()
             if (cur != null && kotlin.math.abs(cur - v) > 3) {
                 Root.run("echo $v > $BACKLIGHT")
-                if (lastHw != v || why != "watch") AppLog.i("light", "screen light set directly: $cur → $v ($why)")
+                // Bilskjermen setter lyset tilbake jevnlig: logg bare når nivået endres, ellers høyst hvert 10. minutt
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (lastHw != v || now - lastHwLog > 600_000) { lastHwLog = now; AppLog.i("light", "screen light set directly: $cur → $v ($why)") }
             }
             lastHw = v
             hwBusy = false
