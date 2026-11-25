@@ -139,20 +139,17 @@ object LocalResume {
         lastResume = t
         AppLog.i("music", "resuming $pkg ($why)")
         if (Hub.localMedia.value?.playing == true) return
-        // 1) Lever appen ikke (bilskjermen lukker alle apper når bilen slås av): åpne den et øyeblikk
-        //    med en gang, så den starter opp mens vi venter på internett fra telefonens hotspot.
+        // 1) Lever appen ikke (bilskjermen lukker alle apper når bilen slås av): vekk den i bakgrunnen
+        //    slik Android Auto gjør (kobler til appens musikktjeneste) – uten å vise den på skjermen.
+        //    Å åpne appen teller som «du brukte den», og da gidder ikke YouTube Music å hente køen din.
         val alive = Hub.localMedia.value?.pkg == pkg
         if (!alive) {
             playButton(ctx, pkg, play = false)
-            ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { launch ->
+            if (!connectBrowser(ctx, pkg)) ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { launch ->
                 AppLog.i("music", "opening $pkg briefly so it starts up")
                 runCatching { ctx.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)) }
-                main.postDelayed({
-                    runCatching {
-                        ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
-                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION))
-                    }
-                }, 3000)
+                openedForLoad = true
+                main.postDelayed({ backHome(ctx, pkg) }, 3000)
             }
         }
         // 2) Vent på internett (høyst 2 minutter), så spill – og sjekk at det faktisk spiller
@@ -164,12 +161,11 @@ object LocalResume {
     }
 
     /**
-     * Får musikken i gang uten å vise appen hvis det går:
-     *  1) Vent til appen er klar (har en mediesesjon) – høyst 15 s.
-     *  2) Send play i bakgrunnen: med en gang den er klar, etter 2 s og etter 4 s.
-     *  3) Siste forsøk i bakgrunnen: «neste sang» etter 6 s (får YouTube Music til å laste køen).
-     *  4) Fortsatt stille etter 9 s: åpne appen på skjermen og prøv play derfra (høyst 20 s),
-     *     og gå tilbake til hjemmeskjermen så snart det spiller.
+     * Får musikken i gang uten å vise appen:
+     *  1) Vent til appen er klar (har en mediesesjon eller bakgrunnstilkobling) – høyst 15 s.
+     *  2) Play i bakgrunnen: med en gang den er klar, etter 2 s og etter 4 s.
+     *  3) «Neste sang» etter 6 s, så «spill noe» (din vanlige miks) etter 8 s – hvis køen er tom.
+     *  4) Bare hvis det fortsatt er stille, og du ikke holder på med noe på skjermen: åpne appen.
      * Etter en vanlig standby er appen klar med en gang og spiller på første play.
      */
     private class Attempt(val start: Long) {
@@ -177,23 +173,53 @@ object LocalResume {
     }
     private var openedForLoad = false
 
+    // ---- bakgrunnstilkobling til musikkappen (MediaBrowser, slik Android Auto gjør)
+    private var browser: android.media.browse.MediaBrowser? = null
+    @Volatile private var browserCtl: android.media.session.MediaController? = null
+    @Volatile private var browserPkg: String? = null
+
+    private fun connectBrowser(ctx: Context, pkg: String): Boolean = runCatching {
+        val svc = ctx.packageManager.queryIntentServices(Intent("android.media.browse.MediaBrowserService").setPackage(pkg), 0)
+            .firstOrNull()?.serviceInfo ?: return false
+        main.post {
+            runCatching { browser?.disconnect() }
+            browserCtl = null; browserPkg = pkg
+            val app = ctx.applicationContext
+            lateinit var b: android.media.browse.MediaBrowser
+            b = android.media.browse.MediaBrowser(app, android.content.ComponentName(svc.packageName, svc.name), object : android.media.browse.MediaBrowser.ConnectionCallback() {
+                override fun onConnected() {
+                    browserCtl = runCatching { android.media.session.MediaController(app, b.sessionToken) }.getOrNull()
+                    AppLog.i("music", "woke $pkg in the background (without showing it)")
+                }
+                override fun onConnectionFailed() { AppLog.i("music", "$pkg refused a background connection") }
+                override fun onConnectionSuspended() { browserCtl = null }
+            }, null)
+            browser = b
+            runCatching { b.connect() }.onFailure { AppLog.i("music", "background connection failed: ${it.message}") }
+        }
+        true
+    }.getOrDefault(false)
+
+    private fun disconnectBrowser() {
+        main.postDelayed({ runCatching { browser?.disconnect() }; browser = null; browserCtl = null; browserPkg = null }, 5000)
+    }
+
+    private fun ctl(pkg: String) = browserCtl?.takeIf { browserPkg == pkg }
+
     private fun playLoop(ctx: Context, pkg: String, a: Attempt) {
         val now = SystemClock.elapsedRealtime()
         if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) {
             AppLog.i("music", "$pkg is playing (after ${(now - a.start) / 1000} s${if (a.opened > 0) ", app was shown" else ""})")
-            backHome(ctx); return
+            backHome(ctx, pkg); disconnectBrowser(); return
         }
-        if (a.readyAt == 0L && MediaListener.hasSession(pkg)) {
+        if (a.readyAt == 0L && (MediaListener.hasSession(pkg) || ctl(pkg) != null)) {
             a.readyAt = now
             if (now - a.start > 500) AppLog.i("music", "$pkg is ready after ${(now - a.start) / 1000} s")
         }
+        if (now - a.start > 40_000) { AppLog.i("music", "$pkg still not playing – giving up"); backHome(ctx, pkg); disconnectBrowser(); return }
         when {
-            a.opened > 0 -> {
-                if (now - a.opened > 20_000) { AppLog.i("music", "$pkg still not playing – giving up"); backHome(ctx); return }
-                if (now - a.lastSend >= 2000) { a.lastSend = now; play(ctx, pkg) }
-            }
+            a.opened > 0 -> if (now - a.lastSend >= 2000) { a.lastSend = now; play(ctx, pkg) }
             a.readyAt == 0L -> {
-                // Ikke klar ennå: medieknappen kan vekke den; vent høyst 15 s før appen åpnes
                 if (now - a.start > 15_000) openApp(ctx, pkg, a, "never got ready")
                 else if (now - a.lastSend >= 3000) { a.lastSend = now; playButton(ctx, pkg) }
             }
@@ -205,28 +231,43 @@ object LocalResume {
                     a.step == 2 && since >= 4000 -> { a.step = 3; play(ctx, pkg) }
                     a.step == 3 && since >= 6000 -> {
                         a.step = 4
-                        if (MediaListener.controlPkg(pkg, "next")) AppLog.i("music", "next sent to $pkg (last try in the background)")
+                        val c = ctl(pkg)
+                        if (c != null) { c.transportControls.skipToNext(); AppLog.i("music", "next sent to $pkg (in the background)") }
+                        else if (MediaListener.controlPkg(pkg, "next")) AppLog.i("music", "next sent to $pkg (in the background)")
                     }
-                    a.step == 4 && since >= 9000 -> openApp(ctx, pkg, a, "ignores play and next")
+                    a.step == 4 && since >= 8000 -> {
+                        a.step = 5
+                        // Køen er tom (YouTube Music har glemt den): be den spille noe – din vanlige miks
+                        ctl(pkg)?.let { c -> c.transportControls.playFromSearch("", android.os.Bundle()); AppLog.i("music", "asked $pkg to play something (queue empty?)") }
+                    }
+                    a.step == 5 && since >= 11_000 -> { a.step = 6; openApp(ctx, pkg, a, "ignores play and next") }
                 }
             }
         }
         main.postDelayed({ playLoop(ctx, pkg, a) }, 500)
     }
 
+    /** Åpne appen på skjermen – men aldri midt i noe du holder på med (meny, en annen app). */
     private fun openApp(ctx: Context, pkg: String, a: Attempt, why: String) {
         a.opened = SystemClock.elapsedRealtime(); a.lastSend = a.opened
+        val front = Hub.frontApp?.invoke()
+        val busy = SystemClock.elapsedRealtime() - Hub.userActiveAt < 10_000
+        if (busy || (front != null && front != ctx.packageName)) {
+            AppLog.i("music", "$pkg $why – not opening it (you are using the screen: $front)"); return
+        }
         val launch = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: return
         AppLog.i("music", "$pkg $why – opening it so it loads")
         openedForLoad = true
         runCatching { ctx.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)) }
     }
 
-    /** Lukk appen vi åpnet for å få den til å laste, og gå tilbake til hjemmeskjermen. */
-    private fun backHome(ctx: Context) {
+    /** Tilbake til hjemmeskjermen – bare hvis appen vi åpnet fortsatt er den som vises. */
+    private fun backHome(ctx: Context, pkg: String) {
         if (!openedForLoad) return
         openedForLoad = false
         main.postDelayed({
+            val front = Hub.frontApp?.invoke()
+            if (front != null && front != pkg) return@postDelayed
             runCatching {
                 ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION))
@@ -237,7 +278,9 @@ object LocalResume {
     private fun play(ctx: Context, pkg: String) {
         if (Hub.localMedia.value?.playing == true) return
         // Styr akkurat denne appen direkte; har den ingen økt ennå, send «play»-knappen til den
-        if (MediaListener.controlPkg(pkg, "play")) AppLog.i("music", "play sent to $pkg")
+        val c = ctl(pkg)
+        if (c != null) { c.transportControls.play(); AppLog.i("music", "play sent to $pkg") }
+        else if (MediaListener.controlPkg(pkg, "play")) AppLog.i("music", "play sent to $pkg")
         else { AppLog.i("music", "play button sent to $pkg"); playButton(ctx, pkg); AutoPlay.resume(ctx) }
     }
 

@@ -299,6 +299,7 @@ class JoyMouseService : AccessibilityService() {
     /** Scrolleknappen (0x32 opp / 0x33 ned) og Hjem (0x34: 1 ned, 2 holdes, 0 slipp). */
     private fun onCarButton(code: Int, state: Int) {
         val now = SystemClock.elapsedRealtime()
+        Hub.userActiveAt = now
         when (code) {
             0x2a -> if (black != null) main.post { hideBlack() } else onMenu(state)
             0x32, 0x33 -> {
@@ -666,6 +667,7 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun onPress(down: Boolean) {
+        Hub.userActiveAt = SystemClock.elapsedRealtime()
         if (black != null) {   // trykk vekker bare skjermen, klikker ikke (men ikke rett etter at den ble slått av)
             if (down && SystemClock.uptimeMillis() - blackAt > 1500) hideBlack()
             return

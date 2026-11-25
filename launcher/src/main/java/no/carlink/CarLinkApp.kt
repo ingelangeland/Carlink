@@ -16,6 +16,7 @@ class CarLinkApp : Application() {
         // da tror CarLink at bare telefonen spiller og viser telefonens cover. Koble den til igjen.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ SystemFix.healMediaListener(this) }, 8000)
         Hub.startLocalMusic = { LocalResume.playLast(this) }
+        Hub.frontApp = { JoyMouseService.instance?.frontPackage() }
         AppCatalog.start(this)
         Updater.apkName = "CarLink-bilskjerm.apk"
     }

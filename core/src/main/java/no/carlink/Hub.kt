@@ -127,6 +127,10 @@ object Hub {
 
     /** Bilskjermen: start musikken på skjermen fra bunnen av (også etter en kald start). Settes av CarLinkApp. */
     @Volatile var startLocalMusic: (() -> Boolean)? = null
+    /** Bilskjermen: appen som vises nå (settes av CarLinkApp). */
+    @Volatile var frontApp: (() -> String?)? = null
+    /** Sist du trykket eller beveget joysticken/knappene (elapsedRealtime). */
+    @Volatile var userActiveAt = 0L
 
     fun mediaCommand(action0: String) {
         demoHandler?.let { it(action0); return }
