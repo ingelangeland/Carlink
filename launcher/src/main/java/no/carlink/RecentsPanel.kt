@@ -120,7 +120,7 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
         val maxW = min((width * 0.8f).toInt() - 330.dp, 1300.dp)
         val cols = max(1, min(max(tasks.size, 1), maxW / colW))
         val rows = ceil(tasks.size / cols.toFloat()).toInt()
-        (panel.layoutParams as LayoutParams).width = max(cols * colW, 360.dp)
+        (panel.layoutParams as LinearLayout.LayoutParams).width = max(cols * colW, 360.dp)
         (scroll.layoutParams as LinearLayout.LayoutParams).height = min(rows * rowH, (height * 0.62f).toInt())
         rowsBox.removeAllViews(); memLabels.clear()
         tasks.chunked(cols).forEach { chunk ->
