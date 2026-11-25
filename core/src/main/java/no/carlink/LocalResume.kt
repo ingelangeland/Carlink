@@ -151,16 +151,45 @@ object LocalResume {
         }
     }
 
-    /** Sjekk hvert 2. sekund at det spiller; prøv igjen (vekselvis direkte og med play-knappen), høyst 10 ganger. */
+    /** Sjekk hvert 2. sekund at det spiller; prøv igjen (vekselvis direkte og med play-knappen), høyst 12 ganger.
+     *  Etter en kald start (omstart av skjermen) har ikke YouTube Music lastet køen sin ennå og overser «play»
+     *  («player wasn't loaded»). Da åpnes appen og får stå fremme til den spiller, og vi sender «neste»,
+     *  som får den til å laste køen og begynne å spille. */
+    private var openedForLoad = false
     private fun retryPlay(ctx: Context, pkg: String, n: Int) {
         main.postDelayed({
             if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) {
-                AppLog.i("music", "$pkg is playing (after ${n * 2} s)"); return@postDelayed
+                AppLog.i("music", "$pkg is playing (after ${n * 2} s)"); backHome(ctx); return@postDelayed
             }
-            if (n >= 10) { AppLog.i("music", "$pkg still not playing after 20 s – giving up"); return@postDelayed }
-            if (n % 2 == 1) play(ctx, pkg) else playButton(ctx, pkg)
+            if (n >= 12) { AppLog.i("music", "$pkg still not playing after 24 s – giving up"); backHome(ctx); return@postDelayed }
+            when (n) {
+                2 -> {   // 4 s uten lyd: appen er nok ikke klar – åpne den og la den stå fremme
+                    ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { launch ->
+                        AppLog.i("music", "$pkg ignores play (cold start?) – opening it so it loads")
+                        openedForLoad = true
+                        runCatching { ctx.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)) }
+                    }
+                }
+                4, 7, 10 -> {
+                    if (MediaListener.controlPkg(pkg, "next")) AppLog.i("music", "next sent to $pkg to make it load")
+                    else play(ctx, pkg)
+                }
+                else -> if (n % 2 == 1) play(ctx, pkg) else playButton(ctx, pkg)
+            }
             retryPlay(ctx, pkg, n + 1)
         }, 2000)
+    }
+
+    /** Lukk appen vi åpnet for å få den til å laste, og gå tilbake til hjemmeskjermen. */
+    private fun backHome(ctx: Context) {
+        if (!openedForLoad) return
+        openedForLoad = false
+        main.postDelayed({
+            runCatching {
+                ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION))
+            }
+        }, 1500)
     }
 
     private fun play(ctx: Context, pkg: String) {

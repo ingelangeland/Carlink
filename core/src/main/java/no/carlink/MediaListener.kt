@@ -143,7 +143,7 @@ class MediaListener : NotificationListenerService() {
 
     private fun doControlPkg(pkg: String, action: String): Boolean {
         val c = try { msm?.getActiveSessions(cn()) } catch (_: SecurityException) { null }?.firstOrNull { it.packageName == pkg } ?: return false
-        when (action) { "play" -> c.transportControls.play(); "pause" -> c.transportControls.pause() }
+        when (action) { "play" -> c.transportControls.play(); "pause" -> c.transportControls.pause(); "next" -> c.transportControls.skipToNext() }
         return true
     }
 
