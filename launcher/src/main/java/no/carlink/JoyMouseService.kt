@@ -233,6 +233,7 @@ class JoyMouseService : AccessibilityService() {
             if (pkg == packageName && event.className?.toString()?.endsWith("ReceiverActivity") == true) carLinkShown()
             if (pkg == SCREEN_SAVER) {
                 accOffAt = SystemClock.uptimeMillis(); accOnAt = 0L
+                LocalResume.carOff(this)
                 if (SystemClock.uptimeMillis() - serviceStartedAt < 30_000) setParked(true)
             } else if (pkg != null && accOffAt > 0 && accOnAt == 0L) { accOnAt = SystemClock.uptimeMillis(); AppLog.i("app", "car switched on (first: $pkg)") }
             if (pkg != null && pkg != SCREEN_SAVER && pkg != "com.android.systemui" && Hub.parked.value) setParked(false)

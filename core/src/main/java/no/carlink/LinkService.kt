@@ -527,6 +527,7 @@ class LinkService : Service() {
                 if (net != null) releaseWifi()
                 rxBusy.set(false)
             }
+            LocalResume.carOff(this@LinkService)
             setStatus("Disconnected – waiting for the phone …")
         }
     }

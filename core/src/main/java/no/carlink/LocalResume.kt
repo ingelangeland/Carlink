@@ -19,7 +19,26 @@ import kotlin.coroutines.coroutineContext
  */
 object LocalResume {
     /** Du pauset musikken selv (ny nøkkel: den gamle kunne bli satt feil når musikken ikke startet). */
-    const val USER_PAUSED = "resumeUserPaused2"
+    const val USER_PAUSED = "resumeUserPaused3"
+    @Volatile private var wasPlaying = false
+    @Volatile private var pausedAt = 0L
+    private var carOffAt = 0L
+
+    /**
+     * Bilen slås av (hvileskjermen kommer / forbindelsen faller). Bilskjermen pauser selv musikken
+     * i samme øyeblikk – det er ikke deg. Var musikken pauset minst 5 s FØR dette, var det deg:
+     * da startes den ikke av seg selv neste gang.
+     */
+    fun carOff(ctx: Context) {
+        val t = SystemClock.elapsedRealtime()
+        if (t - carOffAt < 30_000) return
+        carOffAt = t
+        val lm = Hub.localMedia.value
+        val mine = lm != null && lm.playing != true && pausedAt > 0 && t - pausedAt > 5_000
+        ctx.prefs().edit().putBoolean(USER_PAUSED, mine).apply()
+        AppLog.i("music", if (mine) "car off – you had paused ${lm?.app} ${(t - pausedAt) / 1000} s before, it won't start by itself"
+                          else "car off – music will start by itself next time")
+    }
     private val main = Handler(Looper.getMainLooper())
     private var offAt = 0L
     private var startedOnce = false
@@ -34,24 +53,13 @@ object LocalResume {
         // Skjermen kan sove uten å si fra (bilen av en kort stund): da står «oppetiden» stille
         // mens klokka går. Et hopp i forskjellen betyr at den nettopp våknet.
         var slept = SystemClock.elapsedRealtime() - SystemClock.uptimeMillis()
-        var pausedSince = 0L
-        var wasPlaying = false
+
         while (coroutineContext.isActive) {
             // Pauset du musikken selv (pause i mer enn 10 s mens bilen er på)? Da skal den ikke startes
             // av seg selv neste gang. (Bilskjermens egen pause når bilen slås av varer bare et øyeblikk.)
             val lm = Hub.localMedia.value
-            if (lm?.playing == true) {
-                wasPlaying = true; pausedSince = 0
-                if (ctx.prefs().getBoolean(USER_PAUSED, false)) ctx.prefs().edit().putBoolean(USER_PAUSED, false).apply()
-            } else if (lm != null && wasPlaying && !Hub.parked.value) {
-                // Bare når musikk som faktisk spilte ble pauset – ikke når CarLink selv prøvde å starte den
-                if (pausedSince == 0L) pausedSince = SystemClock.elapsedRealtime()
-                else if (SystemClock.elapsedRealtime() - pausedSince > 10_000 && SystemClock.elapsedRealtime() - lastResume > 40_000 &&
-                    !ctx.prefs().getBoolean(USER_PAUSED, false)) {
-                    ctx.prefs().edit().putBoolean(USER_PAUSED, true).apply()
-                    AppLog.i("music", "you paused ${lm.app} – it won't start by itself next time")
-                }
-            }
+            if (lm?.playing == true) { wasPlaying = true; pausedAt = 0 }
+            else if (lm != null && wasPlaying && pausedAt == 0L) pausedAt = SystemClock.elapsedRealtime()
             val s = SystemClock.elapsedRealtime() - SystemClock.uptimeMillis()
             if (s - slept > 30_000) {
                 AppLog.i("music", "screen woke from sleep (${(s - slept) / 1000} s)")
