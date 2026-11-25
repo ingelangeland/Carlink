@@ -597,7 +597,7 @@ class LinkService : Service() {
         val wm = applicationContext.getSystemService(WifiManager::class.java) ?: return
         while (coroutineContext.isActive) {
             while (coroutineContext.isActive && (Hub.parked.value || !getSystemService(PowerManager::class.java).isInteractive)) delay(2000)
-            var last = ""; var seen = false; var lastKick = -10_000L; var kicks = 0
+            var last = ""; var seen = false; var lastKick = -10_000L; var kicks = 0; var rootScanAt = -1
             val t0 = android.os.SystemClock.elapsedRealtime()
             while (coroutineContext.isActive && !Hub.connected.value && android.os.SystemClock.elapsedRealtime() - t0 < 90_000) {
                 @Suppress("DEPRECATION")
@@ -620,6 +620,15 @@ class LinkService : Service() {
                     @Suppress("DEPRECATION")
                     val hit = runCatching { wm.scanResults }.getOrNull()?.firstOrNull { it.SSID == ssid }
                     if (hit != null) { seen = true; ConnTimeline.mark("hotspot visible (${if (hit.frequency > 4000) "5 GHz" else "2.4 GHz"}, ${hit.level} dBm)") }
+                    else if (kicks > 0 && kicks != rootScanAt) {
+                        rootScanAt = kicks
+                        val line = withContext(Dispatchers.IO) { rootSh("wpa_cli -i wlan0 scan_results 2>/dev/null | grep -F \"$ssid\" | head -1") }.trim()
+                        if (line.isNotBlank()) {
+                            seen = true
+                            val f = line.split(Regex("\\s+"))
+                            ConnTimeline.mark("hotspot visible (${if ((f.getOrNull(1)?.toIntOrNull() ?: 0) > 4000) "5 GHz" else "2.4 GHz"}, ${f.getOrNull(2)} dBm)")
+                        }
+                    }
                 }
                 // Ikke i gang med å koble til: be Wi-Fi lete og koble til med en gang (root) – etter 1,5 s og så hvert 5. s
                 val el = android.os.SystemClock.elapsedRealtime() - t0
@@ -627,18 +636,16 @@ class LinkService : Service() {
                     st in setOf("Wi-Fi off", "Wi-Fi on, not connected", "Wi-Fi searching")) {
                     lastKick = el; kicks++
                     val out = withContext(Dispatchers.IO) {
-                        runCatching {
-                            val p = ProcessBuilder("su", "-c", "svc wifi enable; " +
-                                "(wpa_cli -i wlan0 scan; wpa_cli -i wlan0 reconnect) 2>&1 | tr '\\n' ' ' || true; " +
-                                "cmd wifi start-scan 2>&1 | head -1").redirectErrorStream(true).start()
-                            val t = p.inputStream.bufferedReader().readText(); p.waitFor(); t.trim().take(80)
-                        }.getOrDefault("failed")
+                        rootSh("svc wifi enable\n(wpa_cli -i wlan0 scan; wpa_cli -i wlan0 reconnect) 2>&1 | tr '\\n' ' '\n" +
+                            "cmd wifi start-scan 2>&1 | head -1").trim().take(80)
                     }
                     ConnTimeline.mark("asked Wi-Fi to search and connect (#$kicks: ${out.ifBlank { "ok" }})")
                 }
                 if (st == "Wi-Fi has an address") {
                     @Suppress("DEPRECATION")
-                    wm.connectionInfo?.ssid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }?.let { prefs().edit().putString("hotspotSsid", it).apply() }
+                    val ss = wm.connectionInfo?.ssid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
+                        ?: withContext(Dispatchers.IO) { rootSh("wpa_cli -i wlan0 status 2>/dev/null | grep '^ssid='").substringAfter("ssid=").trim().ifBlank { null } }
+                    ss?.let { prefs().edit().putString("hotspotSsid", it).apply() }
                     break
                 }
                 delay(300)
@@ -649,6 +656,14 @@ class LinkService : Service() {
             while (coroutineContext.isActive && (Hub.parked.value || !getSystemService(PowerManager::class.java).isInteractive)) delay(2000)
         }
     }
+
+    /** Kjører et lite skript som root (skriptet sendes inn, slik «su» på bilskjermen vil ha det). */
+    private fun rootSh(script: String): String = runCatching {
+        val p = ProcessBuilder("su", "-c", "sh").redirectErrorStream(true).start()
+        p.outputStream.bufferedWriter().use { it.write(script); it.write("\nexit\n") }
+        val out = p.inputStream.bufferedReader().readText()
+        p.waitFor(); out
+    }.getOrDefault("failed")
 
     /** Prøver telefonen direkte på Wi-Fi: hotspot-«ruteren» og siste kjente adresse. Billig: ett forsøk hvert 3. s. */
     private suspend fun wifiProbeLoop(incoming: Channel<Pair<Socket, Network?>>) {

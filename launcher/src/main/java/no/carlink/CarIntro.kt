@@ -26,7 +26,10 @@ object CarIntro {
         // Bare når bilen nettopp ble slått på / skjermen startet: CarLink har ikke levd det siste minuttet.
         // (Ikke etter en oppdatering av appen mens du kjører.)
         val aliveAt = ctx.prefs().getLong("resumeAliveAt", 0)
-        if (aliveAt > 0 && System.currentTimeMillis() - aliveAt < 60_000) return
+        if (aliveAt > 0 && System.currentTimeMillis() - aliveAt < 25_000) {
+            AppLog.i("app", "start screen skipped: CarLink was running ${(System.currentTimeMillis() - aliveAt) / 1000} s ago (app restart, not the car)")
+            return
+        }
         val launch = ctx.packageManager.getLaunchIntentForPackage(JoyMouseService.CAR_SYSTEM) ?: return
         val app = ctx.applicationContext
         Hub.introUntil = SystemClock.elapsedRealtime() + secs * 1000L + 1500
