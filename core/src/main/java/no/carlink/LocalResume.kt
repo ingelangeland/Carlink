@@ -18,6 +18,8 @@ import kotlin.coroutines.coroutineContext
  * en stund før, fortsetter den ikke.
  */
 object LocalResume {
+    /** Du pauset musikken selv (ny nøkkel: den gamle kunne bli satt feil når musikken ikke startet). */
+    const val USER_PAUSED = "resumeUserPaused2"
     private val main = Handler(Looper.getMainLooper())
     private var offAt = 0L
     private var startedOnce = false
@@ -33,17 +35,20 @@ object LocalResume {
         // mens klokka går. Et hopp i forskjellen betyr at den nettopp våknet.
         var slept = SystemClock.elapsedRealtime() - SystemClock.uptimeMillis()
         var pausedSince = 0L
+        var wasPlaying = false
         while (coroutineContext.isActive) {
             // Pauset du musikken selv (pause i mer enn 10 s mens bilen er på)? Da skal den ikke startes
             // av seg selv neste gang. (Bilskjermens egen pause når bilen slås av varer bare et øyeblikk.)
             val lm = Hub.localMedia.value
             if (lm?.playing == true) {
-                pausedSince = 0
-                if (ctx.prefs().getBoolean("resumeUserPaused", false)) ctx.prefs().edit().putBoolean("resumeUserPaused", false).apply()
-            } else if (lm != null && !Hub.parked.value) {
+                wasPlaying = true; pausedSince = 0
+                if (ctx.prefs().getBoolean(USER_PAUSED, false)) ctx.prefs().edit().putBoolean(USER_PAUSED, false).apply()
+            } else if (lm != null && wasPlaying && !Hub.parked.value) {
+                // Bare når musikk som faktisk spilte ble pauset – ikke når CarLink selv prøvde å starte den
                 if (pausedSince == 0L) pausedSince = SystemClock.elapsedRealtime()
-                else if (SystemClock.elapsedRealtime() - pausedSince > 10_000 && !ctx.prefs().getBoolean("resumeUserPaused", false)) {
-                    ctx.prefs().edit().putBoolean("resumeUserPaused", true).apply()
+                else if (SystemClock.elapsedRealtime() - pausedSince > 10_000 && SystemClock.elapsedRealtime() - lastResume > 40_000 &&
+                    !ctx.prefs().getBoolean(USER_PAUSED, false)) {
+                    ctx.prefs().edit().putBoolean(USER_PAUSED, true).apply()
                     AppLog.i("music", "you paused ${lm.app} – it won't start by itself next time")
                 }
             }
@@ -95,7 +100,7 @@ object LocalResume {
         val playingAt = snap.second
         val aliveAt = snap.third
         if (pr.getString("lastSource", "phone") != "car") { AppLog.i("music", "no resume ($why): phone was the last source"); return }
-        if (pr.getBoolean("resumeUserPaused", false)) { AppLog.i("music", "no resume ($why): you had paused the music"); return }
+        if (pr.getBoolean(USER_PAUSED, false)) { AppLog.i("music", "no resume ($why): you had paused the music"); return }
         // Bilskjermen pauser musikken når bilen slås av, men CarLink lever en stund til før den
         // avsluttes – derfor godtas det at musikken stoppet inntil 2 minutter før slutten
         if (playingAt == 0L || playingAt < aliveAt - 120_000) { AppLog.i("music", "no resume ($why): music was paused before the car was switched off"); return }

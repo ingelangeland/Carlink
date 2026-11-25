@@ -625,8 +625,10 @@ class LinkService : Service() {
                         val line = withContext(Dispatchers.IO) { rootSh("wpa_cli -i wlan0 scan_results 2>/dev/null | grep -F \"$ssid\" | head -1") }.trim()
                         if (line.isNotBlank()) {
                             seen = true
-                            val f = line.split(Regex("\\s+"))
-                            ConnTimeline.mark("hotspot visible (${if ((f.getOrNull(1)?.toIntOrNull() ?: 0) > 4000) "5 GHz" else "2.4 GHz"}, ${f.getOrNull(2)} dBm)")
+                            val f = line.split(Regex("\\s+")).filter { it.isNotBlank() }
+                            val i = f.indexOfFirst { Regex("([0-9a-f]{2}:){5}[0-9a-f]{2}").matches(it) }
+                            val freq = f.getOrNull(i + 1)?.toIntOrNull() ?: 0
+                            ConnTimeline.mark("hotspot visible (${if (freq > 4000) "5 GHz" else "2.4 GHz"}, ${f.getOrNull(i + 2)} dBm)")
                         }
                     }
                 }
@@ -799,7 +801,7 @@ class LinkService : Service() {
                 // Musikk på skjermen sist: start samme app (åpnes et øyeblikk hvis bilskjermen har lukket den)
                 val pkg = prefs().getString("resumePkg", null)
                 if (Hub.localMedia.value?.playing == true) Unit
-                else if (prefs().getBoolean("resumeUserPaused", false)) AppLog.i("music", "no resume (phone connected): you had paused the music")
+                else if (prefs().getBoolean(LocalResume.USER_PAUSED, false)) AppLog.i("music", "no resume (phone connected): you had paused the music")
                 else if (pkg != null) LocalResume.resumeNow(this@LinkService, pkg, "phone connected") else AutoPlay.resume(this@LinkService)
             }, 1500)
         }

@@ -168,13 +168,13 @@ class JoyMouseService : AccessibilityService() {
     fun frontPackage(): String? = currentPkg ?: frontPkg()
     private fun frontPkg(): String? = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
 
-    private fun startupCarSystem(delayMs: Long = 4000) {
+    private fun startupCarSystem(delayMs0: Long = 4000) {
         if (!justStarted() || !prefs().getBoolean("replaceFactoryHome", true)) return
         if (SystemClock.elapsedRealtime() < allowCarUntil) return
+        // Bilens startbilde: la det stå valgt tid (bare første gang etter oppstart)
+        val delayMs = maxOf(delayMs0, CarIntro.fromCarSystem(this))
         main.postDelayed({
             if (SystemClock.elapsedRealtime() < Hub.introUntil) return@postDelayed   // bilens startbilde vises med vilje
-            // CarLinks skjerm har ikke rukket å bestemme om startbildet skal vises: vent litt, ikke vis CarLink midt i
-            if (CarIntro.seconds(this) > 0 && !CarIntro.checked && delayMs < 6000) { startupCarSystem(delayMs + 1000); return@postDelayed }
             if (currentPkg == CAR_SYSTEM && SystemClock.elapsedRealtime() >= allowCarUntil) {
                 AppLog.i("app", "car system at startup – showing CarLink")
                 runCatching {

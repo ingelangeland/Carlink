@@ -18,7 +18,21 @@ object CarIntro {
 
     fun seconds(ctx: Context) = ctx.prefs().getInt("introSecs", 4)
 
-    /** Kalles første gang CarLinks skjerm lages i en ny prosess. */
+    /**
+     * Bilens eget system står på skjermen ved oppstart (det skjer bare når bilen slås på): la det stå
+     * valgt tid før CarLink kommer. Gir hvor lenge CarLink skal vente (ms).
+     */
+    fun fromCarSystem(ctx: Context): Long {
+        if (checked) return 0
+        checked = true
+        val secs = seconds(ctx)
+        if (secs <= 0 || Hub.parked.value) return 0
+        Hub.introUntil = SystemClock.elapsedRealtime() + secs * 1000L - 200
+        AppLog.i("app", "car switched on – showing the car's start screen for $secs s")
+        return secs * 1000L
+    }
+
+    /** Kalles første gang CarLinks skjerm lages i en ny prosess (når bilskjermen starter CarLink direkte). */
     fun maybeShow(ctx: Context) {
         if (checked) return
         checked = true
