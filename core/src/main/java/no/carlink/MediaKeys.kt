@@ -12,6 +12,8 @@ import android.view.KeyEvent
  * «mediesesjon» som tar imot tastene og sender dem videre til telefonen.
  */
 object MediaKeys {
+    /** Joystick-treningen: får rattknappene (som CarLink fanger før de når skjermbildet). */
+    @Volatile var keyTap: ((String) -> Unit)? = null
     private var session: MediaSession? = null
 
     fun actionFor(keyCode: Int): String? = when (keyCode) {
@@ -33,14 +35,15 @@ object MediaKeys {
                     override fun onMediaButtonEvent(intent: android.content.Intent): Boolean {
                         @Suppress("DEPRECATION")
                         val ev = intent.getParcelableExtra<KeyEvent>(android.content.Intent.EXTRA_KEY_EVENT) ?: return false
+                        if (ev.action == KeyEvent.ACTION_DOWN) keyTap?.invoke(KeyEvent.keyCodeToString(ev.keyCode))
                         val a = actionFor(ev.keyCode) ?: return false
                         if (ev.action == KeyEvent.ACTION_UP) Hub.mediaCommand(a)
                         return true
                     }
-                    override fun onPlay() = Hub.mediaCommand("play")
-                    override fun onPause() = Hub.mediaCommand("pause")
-                    override fun onSkipToNext() = Hub.mediaCommand("next")
-                    override fun onSkipToPrevious() = Hub.mediaCommand("prev")
+                    override fun onPlay() { keyTap?.invoke("play"); Hub.mediaCommand("play") }
+                    override fun onPause() { keyTap?.invoke("pause"); Hub.mediaCommand("pause") }
+                    override fun onSkipToNext() { keyTap?.invoke("next"); Hub.mediaCommand("next") }
+                    override fun onSkipToPrevious() { keyTap?.invoke("previous"); Hub.mediaCommand("prev") }
                 })
                 isActive = true
             }

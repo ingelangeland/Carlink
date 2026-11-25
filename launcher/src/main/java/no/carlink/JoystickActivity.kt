@@ -88,6 +88,12 @@ class JoystickActivity : AppCompatActivity() {
         title.text = "Get ready"
         info.text = "Follow the instructions on the screen. No need to touch the screen.\nStarting in 4 seconds …"
         delay(4000)
+        // Med joysticken som mus kommer bevegelsene som meldinger fra bilen (ikke som vanlige Android-signaler),
+        // og rattknappene fanges av CarLink – ta med begge i opptaket
+        val ui = android.os.Handler(android.os.Looper.getMainLooper())
+        JoyMouseService.frameTap = { f -> ui.post { add("${t()} CAR $f") } }
+        MediaKeys.keyTap = { k -> ui.post { add("${t()} WHEEL $k") } }
+        if (JoyMouseService.instance == null) log.append("(joystick reader not running – only Android signals recorded)\n")
         recording = true
         for ((i, s) in steps.withIndex()) {
             stepName = "${i + 1}"
@@ -101,6 +107,7 @@ class JoystickActivity : AppCompatActivity() {
             if (s.capture && Build.VERSION.SDK_INT >= 26) area.releasePointerCapture()
         }
         recording = false
+        JoyMouseService.frameTap = null; MediaKeys.keyTap = null
         counter.text = "Received: $events signals"
         title.text = "Saving …"; info.text = ""
         val name = "CarLink-joystick-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) + ".txt"
@@ -197,4 +204,9 @@ class JoystickActivity : AppCompatActivity() {
         contentResolver.openOutputStream(uri)!!.use { it.write(text.toByteArray()) }
         true
     }.getOrDefault(false)
+
+    override fun onDestroy() {
+        JoyMouseService.frameTap = null; MediaKeys.keyTap = null
+        super.onDestroy()
+    }
 }

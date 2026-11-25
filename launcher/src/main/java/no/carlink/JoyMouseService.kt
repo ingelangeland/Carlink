@@ -36,6 +36,8 @@ import kotlin.math.hypot
 class JoyMouseService : AccessibilityService() {
 
     companion object {
+        /** Joystick-treningen: får hver melding fra bilen (joystick, knapper) mens opptaket går. */
+        @Volatile var frameTap: ((String) -> Unit)? = null
         const val COMPONENT = "no.carlink.launcher/no.carlink.JoyMouseService"
         @Volatile var instance: JoyMouseService? = null
         @Volatile var lastFrameAt = 0L
@@ -467,6 +469,7 @@ class JoyMouseService : AccessibilityService() {
     }
 
     private fun parse(line: String) {
+        if (line.contains("rxData:")) frameTap?.invoke(line.substringAfter("rxData:").substringBefore(',').trim())
         if (line.startsWith("voltage=")) {          // bilens batterispenning (ca. hvert 20. sekund)
             line.substring(8).trim().toIntOrNull()?.takeIf { it in 50..200 }?.let { Hub.voltage.value = it }
             return
