@@ -17,7 +17,6 @@ import android.widget.BaseAdapter
 import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -79,24 +78,18 @@ class AppsPanel(ctx: Context) : ScopedFrame(ctx) {
     }
 
     private fun menu(anchor: View, app: AppCatalog.App) {
-        PopupMenu(context, anchor).apply {
-            menu.add(0, 1, 0, "Open side by side (split screen)")
-            menu.add(0, 2, 1, "Open as floating window")
-            menu.add(0, 3, 2, "Open full screen")
-            menu.add(0, 4, 3, "App-info")
-            val fav = Favorites.contains(context, app.component)
-            menu.add(0, 5, 4, if (fav) "Remove from Home" else "Add to Home")
-            setOnMenuItemClickListener {
-                when (it.itemId) {
-                    1 -> Launch.app(context, app.component, Launch.Mode.ADJACENT)
-                    2 -> Launch.app(context, app.component, Launch.Mode.WINDOW)
-                    3 -> Launch.app(context, app.component, Launch.Mode.FULL)
-                    4 -> Launch.start(context, Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + app.component.packageName)))
-                    5 -> if (Favorites.contains(context, app.component)) Favorites.remove(context, app.component) else Favorites.add(context, app.component)
-                }
-                true
-            }
-            show()
-        }
+        val fav = Favorites.contains(context, app.component)
+        CarMenu.show(context, app.label, listOf(
+            CarMenu.Item("Open side by side (split screen)") { Launch.app(context, app.component, Launch.Mode.ADJACENT) },
+            CarMenu.Item("Open as floating window") { Launch.app(context, app.component, Launch.Mode.WINDOW) },
+            CarMenu.Item("Open full screen") { Launch.app(context, app.component, Launch.Mode.FULL) },
+            CarMenu.Item("App info") { Launch.start(context, Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + app.component.packageName))) },
+            CarMenu.Item(if (fav) "Remove from Home" else "Add to Home", danger = fav) {
+                if (fav) Favorites.remove(context, app.component)
+                else if (Favorites.count(context) >= HomeEditor.MAX)
+                    android.widget.Toast.makeText(context, "Home is full (${HomeEditor.MAX}) – remove one first", android.widget.Toast.LENGTH_LONG).show()
+                else Favorites.add(context, app.component)
+            },
+        ), app.icon)
     }
 }

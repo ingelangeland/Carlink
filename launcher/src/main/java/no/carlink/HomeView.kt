@@ -349,7 +349,7 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         }
         favGlass.clear()
         val pills = favs.map { f -> favPill(f.icon, f.label, false, { Launch.app(context, f.cn, Launch.defaultMode(context)) }) { _ -> HomeEditor.appOptions(context, f.cn, f.label) } }.toMutableList()
-        if (favs.size < 6) pills += favPill(context.getDrawable(R.drawable.ic_add), "Add", true, { HomeEditor.show(context) }) { _ -> HomeEditor.show(context) }
+        if (favs.size < HomeEditor.MAX) pills += favPill(context.getDrawable(R.drawable.ic_add), "Add", true, { HomeEditor.show(context) }) { _ -> HomeEditor.show(context) }
         favPills = pills
         layoutFavGrid()
         applyTheme(Ambient.theme.value)

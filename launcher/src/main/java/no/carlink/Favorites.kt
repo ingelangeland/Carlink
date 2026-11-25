@@ -22,16 +22,19 @@ object Favorites {
     fun list(ctx: Context): List<ComponentName> {
         val raw = ctx.prefs().getString(KEY, null)
         if (raw == null) {
-            val d = defaults.mapNotNull { ctx.packageManager.getLaunchIntentForPackage(it)?.component }.take(5)
+            val d = defaults.mapNotNull { ctx.packageManager.getLaunchIntentForPackage(it)?.component }.take(HomeEditor.MAX)
             save(ctx, d); return d
         }
-        return raw.split("|").filter { it.isNotBlank() }.mapNotNull { ComponentName.unflattenFromString(it) }
+        val l = raw.split("|").filter { it.isNotBlank() }.mapNotNull { ComponentName.unflattenFromString(it) }
+        // Plass til høyst 4: de første beholdes
+        if (l.size > HomeEditor.MAX) { val k = l.take(HomeEditor.MAX); save(ctx, k); return k }
+        return l
     }
 
     fun contains(ctx: Context, cn: ComponentName) = list(ctx).contains(cn)
 
     fun add(ctx: Context, cn: ComponentName) {
-        val l = list(ctx); if (cn in l) return
+        val l = list(ctx); if (cn in l || l.size >= HomeEditor.MAX) return
         save(ctx, l + cn)
     }
 
