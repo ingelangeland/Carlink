@@ -43,7 +43,7 @@ object LocalResume {
     private var offAt = 0L
     private var startedOnce = false
     private var lastWrite = 0L
-    private var lastWake = 0L
+    private var lastWake = -1_000_000L   // ikke 0: klokka starter på 0 etter en omstart
 
     fun enabled(ctx: Context) = ctx.prefs().getBoolean("resumeLocal", true)
 
@@ -117,15 +117,18 @@ object LocalResume {
     }
 
     /** Start musikken i [pkg]: spill direkte hvis appen lever, ellers åpne den et øyeblikk først. */
-    private var lastResume = 0L
+    private var lastResume = -1_000_000L
 
     /** Du trykket play/neste og ingenting spiller: start den siste musikkappen (samme vei som ved oppstart). */
-    fun playLast(ctx: Context) {
-        val pkg = Hub.localMedia.value?.pkg ?: ctx.prefs().getString("resumePkg", null)
-        if (pkg == null) { MediaListener.control("play"); return }
-        if (SystemClock.elapsedRealtime() - lastResume < 25_000) { play(ctx, pkg); return }   // er allerede i gang
-        lastResume = 0L
+    fun playLast(ctx: Context): Boolean {
+        // Var telefonen siste kilde (og den er koblet til), skal play gå dit som før
+        if (Hub.connected.value && ctx.prefs().getString("lastSource", "phone") != "car") return false
+        val pkg = Hub.localMedia.value?.pkg?.takeIf { it.isNotBlank() } ?: ctx.prefs().getString("resumePkg", null)
+        if (pkg == null) { MediaListener.control("play"); return true }
+        if (SystemClock.elapsedRealtime() - lastResume < 25_000) { play(ctx, pkg); return true }   // er allerede i gang
+        lastResume = -1_000_000L
         resumeNow(ctx, pkg, "you pressed play")
+        return true
     }
 
     fun resumeNow(ctx: Context, pkg: String, why: String) {
