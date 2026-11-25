@@ -37,14 +37,14 @@ class JoystickActivity : AppCompatActivity() {
     private val steps = listOf(
         Step("Don't touch the joystick – just let it rest", 5),
         Step("Move the joystick slowly around in a circle", 8),
-        Step("Push the joystick UP and release – a few times", 6),
-        Step("Push the joystick DOWN and release – a few times", 6),
-        Step("Push the joystick LEFT and release – a few times", 6),
-        Step("Push the joystick RIGHT and release – a few times", 6),
-        Step("Press the joystick DOWN (click) and release – 3 times", 7),
-        Step("Hold the joystick pressed and move it up and down", 8),
+        Step("Move the joystick UP a bit and stop – a few times (the dot stays where you stop)", 6),
+        Step("Move the joystick DOWN a bit and stop – a few times", 6),
+        Step("Move the joystick LEFT a bit and stop – a few times", 6),
+        Step("Move the joystick RIGHT a bit and stop – a few times", 6),
+        Step("Click: press the joystick down and let go – 3 times", 7),
+        Step("Hold the joystick pressed and move it up and down (like scrolling)", 8),
         Step("Steering wheel: press NEXT and PREVIOUS song, then PLAY/PAUSE", 10),
-        Step("Raw movement: move the joystick around again", 8, capture = true),
+        Step("Free movement: move the joystick around as you normally would", 8, capture = true),
     )
 
     private val log = StringBuilder(64 * 1024)
