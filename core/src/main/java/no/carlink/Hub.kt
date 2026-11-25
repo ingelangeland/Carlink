@@ -125,8 +125,18 @@ object Hub {
         }
     }
 
-    fun mediaCommand(action: String) {
-        demoHandler?.let { it(action); return }
+    /** Bilskjermen: start musikken på skjermen fra bunnen av (også etter en kald start). Settes av CarLinkApp. */
+    @Volatile var startLocalMusic: (() -> Unit)? = null
+
+    fun mediaCommand(action0: String) {
+        demoHandler?.let { it(action0); return }
+        // «Neste» når ingenting spiller: start musikken i stedet for å hoppe over en sang
+        val silent = localMedia.value?.playing != true && remoteMedia.value?.playing != true
+        val action = if (action0 == "next" && silent) "play" else action0
+        if (action != action0) AppLog.i("music", "next pressed while nothing plays – starting the music")
+        if (action == "play" && silent && !useRemote(connected.value, remoteMedia.value, localMedia.value)) {
+            startLocalMusic?.let { it(); return }
+        }
         if (useRemote(connected.value, remoteMedia.value, localMedia.value)) {
             send(JSONObject().put("t", "cmd").put("a", action))
         } else {

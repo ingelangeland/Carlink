@@ -921,6 +921,11 @@ class JoyMouseService : AccessibilityService() {
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> return true
                 KeyEvent.KEYCODE_BACK -> { if (e.action == KeyEvent.ACTION_UP) { backAfterTap(); performGlobalAction(GLOBAL_ACTION_BACK) }; return true }
             }
+            if (e.keyCode == KeyEvent.KEYCODE_MEDIA_NEXT && Hub.localMedia.value?.playing != true && Hub.remoteMedia.value?.playing != true) {
+                // «Neste» når ingenting spiller: start musikken
+                if (e.action == KeyEvent.ACTION_UP) Hub.mediaCommand("next")
+                return true
+            }
             if (e.keyCode in mediaKeys) {
                 // Rattknappene skal fortsatt styre musikken
                 runCatching { getSystemService(android.media.AudioManager::class.java).dispatchMediaKeyEvent(e) }
