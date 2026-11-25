@@ -122,6 +122,8 @@ class MediaListener : NotificationListenerService() {
         val title = md?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: md?.description?.title?.toString() ?: ""
         val artist = md?.getString(MediaMetadata.METADATA_KEY_ARTIST)
             ?: md?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST) ?: md?.description?.subtitle?.toString() ?: ""
+        // Uten bilde i sesjonen (f.eks. første sang etter en kald start): hent coveret et annet sted fra
+        if (art == null && title.isNotBlank()) art = artCache["$title|$artist"] ?: run { findArt(c, md, "$title|$artist"); null }
         val album = md?.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: ""
         // Bytte av sang (buffring/hopping) regnes som «spiller», så visningen ikke blinker mellom sangene
         val playing = ps?.state in setOf(PlaybackState.STATE_PLAYING, PlaybackState.STATE_BUFFERING,
@@ -143,6 +145,46 @@ class MediaListener : NotificationListenerService() {
             positionMs = pos.coerceAtLeast(0), updatedAt = SystemClock.elapsedRealtime(),
             art = art, artId = Objects.hash(title, artist, album, art?.width, art?.height), app = appName, pkg = c.packageName,
         )
+    }
+
+    // ---------------- Cover når musikkappen ikke legger det ved (kommer ofte først ved neste sang)
+
+    private val artCache = LinkedHashMap<String, Bitmap>()
+    private val artTries = HashMap<String, Int>()
+
+    private fun findArt(c: MediaController, md: MediaMetadata?, key: String) {
+        val n = artTries[key] ?: 0
+        if (n >= 4) return
+        artTries[key] = n + 1
+        if (artTries.size > 50) artTries.clear()
+        // 1) Bildet i appens avspillingsvarsel
+        val fromNotif = runCatching {
+            activeNotifications?.filter { it.packageName == c.packageName }
+                ?.firstNotNullOfOrNull { it.notification.getLargeIcon()?.loadDrawable(this)?.toBitmap(512, 512, Bitmap.Config.ARGB_8888) }
+        }.getOrNull()
+        if (fromNotif != null) { gotArt(key, fromNotif); return }
+        // 2) Bildeadressen i sesjonen (fil i appen eller på nett)
+        val uris = listOf(MediaMetadata.METADATA_KEY_ALBUM_ART_URI, MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI)
+            .mapNotNull { md?.getString(it)?.takeIf { u -> u.isNotBlank() } } + listOfNotNull(md?.description?.iconUri?.toString())
+        if (uris.isNotEmpty()) Thread {
+            for (u in uris) {
+                val b = runCatching {
+                    val input = if (u.startsWith("http")) (java.net.URL(u).openConnection().apply { connectTimeout = 5000; readTimeout = 8000 }).getInputStream()
+                        else contentResolver.openInputStream(android.net.Uri.parse(u))
+                    input?.use { android.graphics.BitmapFactory.decodeStream(it) }
+                }.getOrNull()
+                if (b != null) { main.post { gotArt(key, b) }; return@Thread }
+            }
+        }.start()
+        // 3) Prøv igjen litt senere (appen legger ofte ved bildet etter et par sekunder)
+        main.postDelayed({ publish() }, 2500L * (n + 1))
+    }
+
+    private fun gotArt(key: String, b: Bitmap) {
+        val bmp = if (b.width > 800) Bitmap.createScaledBitmap(b, 800, 800 * b.height / b.width, true) else b
+        artCache[key] = bmp
+        while (artCache.size > 20) artCache.remove(artCache.keys.first())
+        publish()
     }
 
     private fun doControlPkg(pkg: String, action: String): Boolean {

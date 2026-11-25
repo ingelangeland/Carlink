@@ -111,7 +111,8 @@ class LinkService : Service() {
 
         /** Kjører senderen nå? (brukes av Bluetooth-mottakeren) */
         @Volatile var senderRunning = false; private set
-        private const val CHANNEL = "link"
+        // Stille varsel (påkrevd av Android mens forbindelsen er oppe): «min» = ingen lyd, ikke i statuslinja
+        private const val CHANNEL = "link_quiet"
         private const val NOTIF_ID = 42
 
         /**
@@ -247,6 +248,7 @@ class LinkService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+            .setPriority(NotificationCompat.PRIORITY_MIN).setSilent(true).setOnlyAlertOnce(true)
             .setContentTitle(if (mode == "sender") "CarLink Sender" else "CarLink")
             .setContentText(text)
             .setOngoing(true)
@@ -257,7 +259,10 @@ class LinkService : Service() {
 
     private fun goForeground(sender: Boolean, audio: Boolean = false): Boolean {
         val nm = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Connection", NotificationManager.IMPORTANCE_LOW))
+        if (Build.VERSION.SDK_INT >= 26) {
+            runCatching { nm.deleteNotificationChannel("link") }   // den gamle, som viste seg i statuslinja
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Connection (silent)", NotificationManager.IMPORTANCE_MIN).apply { setShowBadge(false) })
+        }
         var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         if (sender && Perms.has(this, Manifest.permission.ACCESS_FINE_LOCATION)) {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
