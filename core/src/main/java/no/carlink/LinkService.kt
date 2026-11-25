@@ -639,6 +639,15 @@ class LinkService : Service() {
                 if (wm.isWifiEnabled && el - lastKick > 6000 && kicks < 5 &&
                     st in setOf("Wi-Fi on, not connected", "Wi-Fi searching")) {
                     lastKick = el; kicks++
+                    // Rask leting: bare på kanalen hotspoten brukte sist (+ de vanlige 2,4 GHz-kanalene 1, 6 og 11).
+                    // Tar under et sekund, i stedet for at Android går gjennom alle kanalene på begge båndene.
+                    if (kicks <= 2) {
+                        val freqs = (listOfNotNull(prefs().getInt("hotspotFreq", 0).takeIf { it > 0 }) + listOf(2412, 2437, 2462)).distinct()
+                        val out = withContext(Dispatchers.IO) { rootSh("wpa_cli -i wlan0 scan freq=${freqs.joinToString(",")} 2>&1") }
+                            .lines().lastOrNull { it.isNotBlank() }?.trim()?.take(30) ?: "?"
+                        ConnTimeline.mark("quick search on the hotspot's channel (${freqs.first()} MHz: $out)")
+                        delay(800)
+                    }
                     val note = runCatching {
                         @Suppress("DEPRECATION")
                         val cfg = wm.configuredNetworks?.firstOrNull { it.SSID?.trim('"') == ssid }
@@ -655,6 +664,9 @@ class LinkService : Service() {
                     val ss = wm.connectionInfo?.ssid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
                         ?: withContext(Dispatchers.IO) { rootSh("wpa_cli -i wlan0 status 2>/dev/null | grep '^ssid='").substringAfter("ssid=").trim().ifBlank { null } }
                     ss?.let { prefs().edit().putString("hotspotSsid", it).apply() }
+                    // Husk kanalen, så neste oppstart kan lete der først
+                    @Suppress("DEPRECATION") val f = wm.connectionInfo?.frequency ?: 0
+                    if (f > 0) prefs().edit().putInt("hotspotFreq", f).apply()
                     break
                 }
                 delay(300)
