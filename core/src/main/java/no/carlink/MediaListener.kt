@@ -29,6 +29,8 @@ class MediaListener : NotificationListenerService() {
         /** Er lytteren (som ser musikken som spilles på denne enheten) koblet til? */
         fun connected() = instance != null
         fun control(action: String) { Handler(Looper.getMainLooper()).post { instance?.doControl(action) } }
+        /** Styr akkurat denne appen (ikke bare den som er valgt nå). Gir false hvis appen ikke har noen aktiv økt. */
+        fun controlPkg(pkg: String, action: String): Boolean = instance?.doControlPkg(pkg, action) ?: false
         const val MAPS_PKG = "com.google.android.apps.maps"
         fun isEnabled(ctx: Context) = NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName)
     }
@@ -137,6 +139,12 @@ class MediaListener : NotificationListenerService() {
             positionMs = pos.coerceAtLeast(0), updatedAt = SystemClock.elapsedRealtime(),
             art = art, artId = Objects.hash(title, artist, album, art?.width, art?.height), app = appName, pkg = c.packageName,
         )
+    }
+
+    private fun doControlPkg(pkg: String, action: String): Boolean {
+        val c = try { msm?.getActiveSessions(cn()) } catch (_: SecurityException) { null }?.firstOrNull { it.packageName == pkg } ?: return false
+        when (action) { "play" -> c.transportControls.play(); "pause" -> c.transportControls.pause() }
+        return true
     }
 
     private fun doControl(action: String) {

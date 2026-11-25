@@ -145,14 +145,16 @@ object LocalResume {
                 }
                 AppLog.i("music", "$pkg not playing yet – trying once more")
                 play(ctx, pkg)
+                main.postDelayed({ if (Hub.localMedia.value?.playing != true) { AppLog.i("music", "still not playing – play button to $pkg"); playButton(ctx, pkg) } }, 3000)
             }, 10_000)
         }
     }
 
     private fun play(ctx: Context, pkg: String) {
         if (Hub.localMedia.value?.playing == true) return
-        val cur = Hub.localMedia.value
-        if (cur != null && cur.pkg == pkg) MediaListener.control("play") else { playButton(ctx, pkg); AutoPlay.resume(ctx) }
+        // Styr akkurat denne appen direkte; har den ingen økt ennå, send «play»-knappen til den
+        if (MediaListener.controlPkg(pkg, "play")) AppLog.i("music", "play sent to $pkg")
+        else { AppLog.i("music", "play button sent to $pkg"); playButton(ctx, pkg); AutoPlay.resume(ctx) }
     }
 
     private fun hasInternet(ctx: Context): Boolean = runCatching {
