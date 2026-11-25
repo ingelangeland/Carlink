@@ -239,7 +239,8 @@ class HomeView(ctx: Context, private val actions: Actions) : ScopedFrame(ctx) {
         accentLine.background = rounded(t.accent, 2)
         progress.progressTintList = ColorStateList.valueOf(t.accent)
         sourceTv.setTextColor(t.accent)
-        speedTv.setTextColor(t.accent)
+        // Farten i samme hvite farge som batteriet og været (ikke coverets aksentfarge)
+        speedTv.setTextColor(0xFFFFFFFF.toInt())
         viz.accent = t.accent
         // Spill-knappen er fylt med aksentfargen -> mørkt ikon hvis fargen er lys
         playBtn.setColorFilter(if (androidx.core.graphics.ColorUtils.calculateLuminance(t.accent) > 0.5) t.dark else 0xFFFFFFFF.toInt())
