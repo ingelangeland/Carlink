@@ -28,14 +28,12 @@ object LogSender {
             echo "--- framework / system apps from the maker"
             ls /system/framework 2>/dev/null | grep -aiE "spd|car|xh"
             ls /system/app /system/priv-app 2>/dev/null | grep -aiE "spd|systemui|car" | head -40
-            for n in ${'$'}(service list 2>/dev/null | grep -aiE "spd|bklight|backlight|mcu" | sed -E 's/^[0-9]+[[:space:]]+([^:]+):.*/\1/' | head -8); do
-              echo "--- dumpsys ${'$'}n"; dumpsys "${'$'}n" 2>&1 | head -60
-            done
+            # (dumpsys av produsentens tjenester er fjernet – kan få bilskjermen til å henge/starte på nytt)
             echo "--- broadcasts and components about screen light"
-            dumpsys package 2>/dev/null | grep -aiE "bklight|backlight|screen_?off|screenoff|black_?screen|lcd_?off|closescreen" | sort -u | head -60
+            timeout 8 dumpsys package 2>/dev/null | grep -aiE "bklight|backlight|screen_?off|screenoff|black_?screen|lcd_?off|closescreen" | sort -u | head -60
             echo "--- quick settings tiles"
             settings get secure sysui_qs_tiles
-            dumpsys activity service com.android.systemui 2>/dev/null | grep -aiE "tile|bklight|backlight|screen" | head -40
+            timeout 6 dumpsys activity service com.android.systemui 2>/dev/null | grep -aiE "tile|bklight|backlight|screen" | head -40
             echo "--- recent screen light requests"
             logcat -d -v time 2>/dev/null | grep -aE "SpdService-BKLight|BlackWindow|BackLightSetBrightness|BkLight status" | tail -30
         """.trimIndent(), 25).orEmpty().takeLast(80_000)

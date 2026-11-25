@@ -71,6 +71,20 @@ object SystemFix {
     }
 
     /** Musestyringen skal kjøre, men tjenesten er ikke i gang (f.eks. etter en oppdatering): slå den på igjen. */
+    fun healMediaListener(ctx: Context) {
+        if (MediaListener.connected()) return
+        val c = "${ctx.packageName}/no.carlink.MediaListener"
+        Thread {
+            runCatching { android.service.notification.NotificationListenerService.requestRebind(
+                android.content.ComponentName(ctx, "no.carlink.MediaListener")) }
+            Thread.sleep(3000)
+            if (MediaListener.connected()) { AppLog.i("music", "music listener reconnected"); return@Thread }
+            Root.run("cmd notification disallow_listener $c; sleep 0.3; cmd notification allow_listener $c")
+            Thread.sleep(3000)
+            AppLog.i("music", "music listener was not connected – re-enabled (${if (MediaListener.connected()) "ok" else "still missing"})")
+        }.start()
+    }
+
     fun healJoystick(ctx: Context) {
         val wanted = ctx.prefs().getBoolean("joyMouse", false) || JoyMouseService.homeOnly(ctx)
         if (!wanted || JoyMouseService.running()) return

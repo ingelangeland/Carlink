@@ -12,6 +12,9 @@ class CarLinkApp : Application() {
         // Bilskjermen tvangsavslutter CarLink når bilen slås av; Android starter den igjen kort etter
         // (musikk-lytteren). Få musestyringen og oppstartsvakten i gang med en gang, før bilen slås på.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ SystemFix.healJoystick(this) }, 500)
+        // Musikk-lytteren (ser hva som spilles på skjermen) kan mangle etter en full omstart:
+        // da tror CarLink at bare telefonen spiller og viser telefonens cover. Koble den til igjen.
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ SystemFix.healMediaListener(this) }, 8000)
         AppCatalog.start(this)
         Updater.apkName = "CarLink-bilskjerm.apk"
     }

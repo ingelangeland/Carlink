@@ -26,6 +26,8 @@ class MediaListener : NotificationListenerService() {
 
     companion object {
         @Volatile private var instance: MediaListener? = null
+        /** Er lytteren (som ser musikken som spilles på denne enheten) koblet til? */
+        fun connected() = instance != null
         fun control(action: String) { Handler(Looper.getMainLooper()).post { instance?.doControl(action) } }
         const val MAPS_PKG = "com.google.android.apps.maps"
         fun isEnabled(ctx: Context) = NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName)
@@ -43,6 +45,7 @@ class MediaListener : NotificationListenerService() {
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { select(it) }
 
     private fun cn() = ComponentName(this, MediaListener::class.java)
+    private var lastState = ""
 
     override fun onListenerConnected() {
         instance = this
@@ -126,6 +129,8 @@ class MediaListener : NotificationListenerService() {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(c.packageName, 0)).toString()
         } catch (_: Exception) { c.packageName }
 
+        val state = "${c.packageName}:" + if (playing) "playing" else "paused"
+        if (state != lastState) { lastState = state; AppLog.i("music", "on this device: $appName ${if (playing) "playing" else "paused"}") }
         Hub.localMedia.value = Hub.Media(
             title = title, artist = artist, album = album, playing = playing,
             durationMs = md?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L,

@@ -360,7 +360,7 @@ class LinkService : Service() {
                     .map { it.name } }.getOrDefault(emptyList())
                 val ap = names.firstOrNull { it.startsWith("ap") || it.startsWith("swlan") || it.startsWith("softap") || it == "wlan1" }
                 if (ap != null) { ConnTimeline.mark("hotspot ready ($ap)"); break }
-                if (names.any { it.startsWith("wlan") }) { ConnTimeline.mark("phone on Wi-Fi"); break }
+                if (names.any { it.startsWith("wlan") }) { ConnTimeline.mark("phone network ready (${names.joinToString(",")})"); break }
                 delay(500); waited += 500
             }
         }
@@ -503,6 +503,7 @@ class LinkService : Service() {
         }
         launch { LocalResume.track(this@LinkService) }
         if (!Hub.connected.value) ConnTimeline.start("CarLink started on the screen")
+        launch { wifiWatch() }
         btAdapter()?.let { ad -> launch { btListenLoop(ad, incoming) } }
         launch { wifiProbeLoop(incoming) }
         setStatus("Waiting for the phone …")
@@ -576,6 +577,56 @@ class LinkService : Service() {
                 if (!rxBusy.get()) setStatus("Bluetooth: ${e.message ?: e.javaClass.simpleName}")
                 delay(2000)
             }
+        }
+    }
+
+    /**
+     * Skjermen: følg Wi-Fi fra start til tilkoblet (slått på → leter → kobler til → har adresse) i tidslinjen,
+     * og gi Wi-Fi et dytt hvis den ikke har begynt å koble til etter noen sekunder. Kjører bare til den er
+     * tilkoblet (høyst 90 s), og starter på nytt når skjermen slås på.
+     */
+    private suspend fun wifiWatch() {
+        val wm = applicationContext.getSystemService(WifiManager::class.java) ?: return
+        while (coroutineContext.isActive) {
+            while (coroutineContext.isActive && (Hub.parked.value || !getSystemService(PowerManager::class.java).isInteractive)) delay(2000)
+            var last = ""; var kicked = false
+            val t0 = android.os.SystemClock.elapsedRealtime()
+            while (coroutineContext.isActive && !Hub.connected.value && android.os.SystemClock.elapsedRealtime() - t0 < 90_000) {
+                @Suppress("DEPRECATION")
+                val st = when {
+                    !wm.isWifiEnabled -> "Wi-Fi off"
+                    else -> when (wm.connectionInfo?.supplicantState) {
+                        android.net.wifi.SupplicantState.SCANNING -> "Wi-Fi searching"
+                        android.net.wifi.SupplicantState.AUTHENTICATING, android.net.wifi.SupplicantState.ASSOCIATING,
+                        android.net.wifi.SupplicantState.ASSOCIATED, android.net.wifi.SupplicantState.FOUR_WAY_HANDSHAKE,
+                        android.net.wifi.SupplicantState.GROUP_HANDSHAKE -> "Wi-Fi joining the hotspot"
+                        android.net.wifi.SupplicantState.COMPLETED ->
+                            if ((wm.connectionInfo?.ipAddress ?: 0) != 0) "Wi-Fi has an address" else "Wi-Fi joined, waiting for an address"
+                        else -> "Wi-Fi on, not connected"
+                    }
+                }
+                if (st != last) { ConnTimeline.mark(st); last = st }
+                // Etter 4 s uten at den har begynt å koble til: be den lete og koble til med en gang (root)
+                if (!kicked && android.os.SystemClock.elapsedRealtime() - t0 > 4000 &&
+                    st in setOf("Wi-Fi off", "Wi-Fi on, not connected", "Wi-Fi searching")) {
+                    kicked = true
+                    ConnTimeline.mark("asked Wi-Fi to connect now")
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            val p = ProcessBuilder("su", "-c", "svc wifi enable; wpa_cli -i wlan0 reconnect >/dev/null 2>&1 || " +
+                                "wpa_cli -p /data/vendor/wifi/wpa/sockets -i wlan0 reconnect >/dev/null 2>&1; " +
+                                "cmd wifi start-scan >/dev/null 2>&1").redirectErrorStream(true).start()
+                            p.inputStream.bufferedReader().readText(); p.waitFor()
+                        }
+                    }
+                }
+                if (st == "Wi-Fi has an address") break
+                delay(300)
+            }
+            // Vent til forbindelsen har vært oppe og falt igjen, og skjermen er på (ikke i hvile), før neste runde
+            Hub.connected.first { it }
+            Hub.connected.first { !it }
+            while (coroutineContext.isActive && (Hub.parked.value || !getSystemService(PowerManager::class.java).isInteractive)) delay(2000)
         }
     }
 
