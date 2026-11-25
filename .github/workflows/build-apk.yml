@@ -36,13 +36,14 @@ jobs:
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Bygg appene (optimalisert)
-        run: gradle :launcher:assembleRelease :sender:assembleRelease --stacktrace
+        run: gradle :launcher:assembleRelease :sender:assembleRelease :diagnose:assembleRelease --stacktrace
 
       - name: Gi filene tydelige navn
         run: |
           mkdir -p ut
           cp launcher/build/outputs/apk/release/launcher-release.apk ut/CarLink-bilskjerm.apk
           cp sender/build/outputs/apk/release/sender-release.apk ut/CarLink-Sender-telefon.apk
+          cp diagnose/build/outputs/apk/release/diagnose-release.apk ut/CarLink-Diagnose.apk
           # Version info for the built-in updater in both apps
           echo "{\"versionCode\": ${GITHUB_RUN_NUMBER}, \"versionName\": \"1.0.${GITHUB_RUN_NUMBER}\"}" > ut/version.json
           ls -l ut
@@ -65,6 +66,7 @@ jobs:
           body: |
             CarLink-bilskjerm.apk – install on the car screen.
             CarLink-Sender-telefon.apk – install on the phone.
+            CarLink-Diagnose.apk – diagnostics app for the car screen (installed from CarLink: Settings → Updates).
             Both apps update themselves after this (Settings → Updates).
 
   # Kodekontroll (Android Lint) parallelt, så det ikke forsinker bygg og simulering

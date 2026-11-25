@@ -342,6 +342,18 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         toggle("Check automatically", "Looks for a new version when CarLink starts and every 6 hours",
             Updater.autoCheck(context)) { context.prefs().edit().putBoolean("autoUpdate", it).apply() }
         action("Send log to Claude", "What CarLink and the system did recently – sent to the phone, share it from there") { host.sendLog() }
+        // Diagnoseappen: installeres herfra første gang, kan så åpnes herfra
+        val dv = DiagnoseLink.installedVersion(context)
+        val dst = DiagnoseLink.status.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""
+        action("CarLink Diagnose", (if (dv == null) "Not installed – tap to install" else "Installed (build $dv) – tap to open") + dst) {
+            if (dv != null && DiagnoseLink.open(context)) return@action
+            Thread { DiagnoseLink.installOrUpdate(context); post { refresh() } }.start()
+            post { refresh() }
+        }
+        if (dv != null) action("Update CarLink Diagnose", null) {
+            Thread { DiagnoseLink.installOrUpdate(context); post { refresh() } }.start()
+            post { refresh() }
+        }
     }
 
     /** Oppdater visningen (f.eks. når du kommer tilbake fra Android-innstillingene). */

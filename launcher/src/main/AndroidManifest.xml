@@ -45,6 +45,10 @@
         <package android:name="com.google.android.apps.maps" />
     </queries>
 
+    <!-- Bare apper med samme signatur (CarLink Diagnose) kan be CarLink sende rapporter til telefonen -->
+    <permission android:name="no.carlink.permission.DIAGNOSE" android:protectionLevel="signature" />
+    <uses-permission android:name="no.carlink.permission.DIAGNOSE" />
+
     <application
         android:name="no.carlink.CarLinkApp"
         android:label="CarLink"
@@ -79,6 +83,13 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode" />
 
         <receiver android:name="no.carlink.UpdateReceiver" android:exported="false" />
+        <receiver android:name="no.carlink.DiagnoseReceiver" android:exported="true"
+            android:permission="no.carlink.permission.DIAGNOSE">
+            <intent-filter>
+                <action android:name="no.carlink.action.SAVE_STATE" />
+                <action android:name="no.carlink.action.SEND_REPORT" />
+            </intent-filter>
+        </receiver>
         <receiver android:name="no.carlink.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

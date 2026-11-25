@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Lov til å be CarLink sende rapporten til telefonen (bare apper med samme signatur) -->
+    <uses-permission android:name="no.carlink.permission.DIAGNOSE" />
+
+    <queries>
+        <package android:name="no.carlink.launcher" />
+    </queries>
+
+    <!-- Ingen tjenester, mottakere, alarmer eller autostart: appen gjør bare noe mens den er åpen -->
+    <application
+        android:label="CarLink Diagnose"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.Diagnose">
+        <activity
+            android:name="no.carlink.diagnose.DiagnoseActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

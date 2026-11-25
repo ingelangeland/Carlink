@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "CarLink"
-include(":core", ":launcher", ":sender")
+include(":core", ":launcher", ":sender", ":diagnose")
