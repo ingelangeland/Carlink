@@ -230,7 +230,7 @@ class JoyMouseService : AccessibilityService() {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = event.packageName?.toString()
             if (pkg == CAR_SYSTEM) carSystemShown()
-            if (pkg == packageName && event.className?.toString()?.endsWith("ReceiverActivity") == true) carLinkShown()
+            if (pkg == packageName && currentPkg != packageName) carLinkShown(event.className?.toString())
             if (pkg == SCREEN_SAVER) {
                 accOffAt = SystemClock.uptimeMillis(); accOnAt = 0L
                 LocalResume.carOff(this)
@@ -399,10 +399,12 @@ class JoyMouseService : AccessibilityService() {
     }
 
     /** CarLinks hjemskjerm dukket opp rett etter en pilknapp (uten at du trykket Hjem): tilbake til appen. */
-    private fun carLinkShown() {
+    private fun carLinkShown(cls: String?) {
         val now = SystemClock.elapsedRealtime()
-        if (now - scrollKeyAt > 1500 || now - homeKeyAt < 2000 || now < allowCarUntil) return
-        if (currentPkg == packageName || lastAppPkg == null || currentPkg != lastAppPkg) return
+        val sinceArrow = now - scrollKeyAt
+        if (sinceArrow < 5000) AppLog.i("joystick", "CarLink came to front ${sinceArrow} ms after an arrow (from ${currentPkg}, ${cls?.substringAfterLast('.')})")
+        if (sinceArrow > 3000 || now - homeKeyAt < 2000 || now < allowCarUntil) return
+        if (lastAppPkg == null || currentPkg != lastAppPkg) return
         backToLastApp("home screen after arrow button")
     }
 
@@ -410,8 +412,11 @@ class JoyMouseService : AccessibilityService() {
         val x = if (cx >= 0) cx else screenW / 2
         val y = if (cy >= 0) cy else screenH / 2
         val d = (screenH * 0.3f)
-        val y0 = (y - d / 2).coerceIn(10f, screenH - 10f)
-        val y1 = (y + d / 2).coerceIn(10f, screenH - 10f)
+        // Hold dra-bevegelsen unna kantene: et drag som starter helt nede ved kanten tolkes av
+        // bilskjermen som «sveip opp = hjem», og et helt oppe som nedtrekksmenyen.
+        val m = screenH * 0.14f
+        val y0 = (y - d / 2).coerceIn(m, screenH - m)
+        val y1 = (y + d / 2).coerceIn(m, screenH - m)
         // Rulle opp = fingeren drar nedover
         val p = Path().apply { if (up) { moveTo(x, y0); lineTo(x, y1) } else { moveTo(x, y1); lineTo(x, y0) } }
         runCatching {

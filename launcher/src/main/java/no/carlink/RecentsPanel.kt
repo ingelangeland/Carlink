@@ -86,6 +86,9 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
         monitor.background = rounded(Ambient.alpha(Ambient.deep(t.dark), 0x70), 22, 0x26FFFFFF)
     }
 
+    /** Apper lukket her (og når), så de ikke dukker opp igjen før de er åpnet på nytt. */
+    private val closed = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     private fun refresh() {
         layoutGrid()
         scope?.launch {
@@ -101,7 +104,17 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
         val pm = context.packageManager
         val skip = setOf(context.packageName, "com.android.systemui", "android", JoyMouseService.CAR_SYSTEM)
         val seen = LinkedHashSet<String>()
-        Regex("""realActivity=\{?([a-zA-Z0-9_.]+)/""").findAll(out).forEach { seen.add(it.groupValues[1]) }
+        // Hver oppgave: appen og når den sist var i bruk. Apper du har lukket her vises ikke igjen
+        // før du har åpnet dem på nytt (Android beholder oppgaven i listen selv om appen er stoppet).
+        out.split(Regex("""\n\s*\* Recent #""")).forEach { block ->
+            val pkg = Regex("""realActivity=\{?([a-zA-Z0-9_.]+)/""").find(block)?.groupValues?.get(1) ?: return@forEach
+            val active = Regex("""lastActiveTime=(\d+)""").find(block)?.groupValues?.get(1)?.toLongOrNull()
+            val closedAt = closed[pkg]
+            if (closedAt != null) {
+                if (active != null && active > closedAt) closed.remove(pkg) else return@forEach
+            }
+            seen.add(pkg)
+        }
         val homes = runCatching {
             pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0).map { it.activityInfo.packageName }.toSet()
         }.getOrDefault(emptySet())
@@ -166,6 +179,7 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
     }
 
     private fun closeApp(t: Task) {
+        closed[t.pkg] = android.os.SystemClock.elapsedRealtime()
         tasks = tasks.filter { it.pkg != t.pkg }
         layoutGrid()
         Thread { Root.run("am force-stop ${t.pkg}") }.start()
@@ -173,6 +187,7 @@ class RecentsPanel(ctx: Context, blurTarget: View) : GlassOverlay(ctx, blurTarge
 
     private fun closeAllApps() {
         val all = tasks.map { it.pkg }
+        val t = android.os.SystemClock.elapsedRealtime(); all.forEach { closed[it] = t }
         tasks = emptyList(); layoutGrid()
         Thread { Root.run(all.joinToString("\n") { "am force-stop $it" }) }.start()
     }
