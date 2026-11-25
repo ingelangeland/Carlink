@@ -18,16 +18,13 @@ object Brightness {
     private var target = -1
     @Volatile private var granted = false
     @Volatile private var paused = false   // skjermen er «av» – ikke rør lyset
-    private var lastNight: Boolean? = null
 
     fun enabled(ctx: Context) = ctx.prefs().getBoolean("brightAuto", false)
     fun dayLevel(ctx: Context) = ctx.prefs().getInt("brightDay", 90)
     fun nightLevel(ctx: Context) = ctx.prefs().getInt("brightNight", 15)
 
-    /** Minutter etter solnedgang før det alltid er nattnivå (15/30/45/60). */
+    /** Hvor lang tid overgangen tar: etter solnedgang (ned til natt) og før soloppgang (opp til dag). */
     fun nightAfter(ctx: Context) = ctx.prefs().getInt("brightNightAfter", 30).coerceAtLeast(30)
-    /** Mellom solnedgang og nattgrensen: får bilens lys gi nattnivå? */
-    fun lightsAfterSunset(ctx: Context) = ctx.prefs().getBoolean("brightLightsAfterSunset", true)
 
     private const val HORIZON = -0.833   // offisiell solnedgang (sola helt under horisonten)
 
@@ -47,6 +44,36 @@ object Brightness {
         return 24 * 60                            // midtvinter uten soloppgang: alltid natt
     }
 
+    /** Minutter til sola står opp, eller -1 hvis sola er oppe. */
+    private fun minutesUntilSunrise(ctx: Context, now: Long = System.currentTimeMillis()): Int {
+        if (elevation(ctx, now) >= HORIZON) return -1
+        var t = now
+        for (k in 1..540) {
+            t += 120_000
+            if (elevation(ctx, t) >= HORIZON) return k * 2
+        }
+        return 24 * 60
+    }
+
+    /**
+     * Hvor mørkt skjermen skal være: 0 = dagnivå, 1 = nattnivå.
+     * - Sola oppe: dag. Slår bilens lys seg på (tunnel, kraftig uvær) → natt til lysene går av igjen.
+     * - Etter solnedgang: glir jevnt ned til natt over valgt tid. Før soloppgang: jevnt opp igjen.
+     *   Regnes ut fra klokka, så det stemmer også når bilen slås på midt i overgangen.
+     *   Bilens lys betyr ingenting her (de slår seg på automatisk i skumringen).
+     */
+    fun darkness(ctx: Context, now: Long = System.currentTimeMillis()): Double {
+        val since = minutesSinceSunset(ctx, now)
+        if (since < 0) return if (carLights(ctx)) 1.0 else 0.0
+        val until = minutesUntilSunrise(ctx, now)
+        return (minOf(since, until).toDouble() / nightAfter(ctx)).coerceIn(0.0, 1.0)
+    }
+
+    fun levelNow(ctx: Context): Int {
+        val d = darkness(ctx)
+        return Math.round(dayLevel(ctx) + (nightLevel(ctx) - dayLevel(ctx)) * d).toInt()
+    }
+
     /** Tidspunktet for dagens (eller siste) solnedgang, til visning. */
     private fun sunsetTime(ctx: Context): Long? {
         val now = System.currentTimeMillis()
@@ -57,12 +84,20 @@ object Brightness {
         return null
     }
 
-    fun isNight(ctx: Context): Boolean {
+    fun isNight(ctx: Context): Boolean = darkness(ctx) >= 1.0
+
+    private fun phase(ctx: Context): String {
         val since = minutesSinceSunset(ctx)
-        if (since < 0) return false                                   // sola er oppe: alltid dag
-        if (since >= nightAfter(ctx)) return true                    // godt etter solnedgang: alltid natt
-        return lightsAfterSunset(ctx) && carLights(ctx)              // skumring: bilens lys bestemmer
+        val d = darkness(ctx)
+        return when {
+            since < 0 && d >= 1.0 -> "dark (car lights on in daylight – tunnel?)"
+            since < 0 -> "day"
+            d >= 1.0 -> "night"
+            minutesUntilSunrise(ctx) < since -> "brightening before sunrise"
+            else -> "dimming after sunset"
+        }
     }
+    private var lastPhase: String? = null
 
     /** Bilens lys-signal: bilskjermens egen innstilling (1 = lys på), eller Androids nattmodus-flagg. */
     fun carLights(ctx: Context): Boolean =
@@ -97,9 +132,10 @@ object Brightness {
     fun tick(ctx: Context) {
         if (!enabled(ctx) || paused || android.os.SystemClock.uptimeMillis() < previewUntil) return
         if (!tookOver) { tookOver = true; takeOver(ctx, true) }
-        val night = isNight(ctx)
-        if (night != lastNight) { AppLog.i("light", if (night) "night level" else "day level"); lastNight = night }
-        setPercent(ctx, if (night) nightLevel(ctx) else dayLevel(ctx))
+        val ph = phase(ctx)
+        val pct = levelNow(ctx)
+        if (ph != lastPhase) { AppLog.i("light", "$ph – $pct %"); lastPhase = ph }
+        setPercent(ctx, pct)
     }
 
     fun setPercent(ctx: Context, pct: Int) {
@@ -197,18 +233,10 @@ object Brightness {
     }
 
     fun status(ctx: Context): String {
-        val night = isNight(ctx)
         val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
         val sunset = sunsetTime(ctx)
         val times = sunset?.let { " · sunset ${fmt.format(it)}, night from ${fmt.format(it + nightAfter(ctx) * 60_000L)}" } ?: ""
-        val since = minutesSinceSunset(ctx)
-        val why = when {
-            since < 0 -> "sun is up"
-            night && since >= nightAfter(ctx) -> "after sunset"
-            night -> "dusk and car lights on"
-            else -> "dusk"
-        }
-        return "Now: ${if (night) "night" else "day"} level ($why)$times"
+        return "Now: ${levelNow(ctx)} % (${phase(ctx)})$times"
     }
 
     private var before = -1
@@ -224,7 +252,7 @@ object Brightness {
         } else {
             paused = false
             current = 0
-            if (enabled(ctx)) { lastNight = null; tick(ctx) }
+            if (enabled(ctx)) { lastPhase = null; tick(ctx) }
             else { target = if (before > 0) before else 200; step(ctx.applicationContext) }
         }
     }

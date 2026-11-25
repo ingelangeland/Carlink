@@ -213,11 +213,10 @@ class JoyMouseService : AccessibilityService() {
         }
     }
 
-    private var brightCount = 0
     private val brightTick = object : Runnable {
         override fun run() {
             if (Hub.parked.value) { main.postDelayed(this, 10_000); return }
-            if (++brightCount % 6 == 0) Brightness.tick(this@JoyMouseService)   // hvert minutt
+            Brightness.tick(this@JoyMouseService)   // hvert 10. sekund: jevn overgang i skumringen
             Brightness.watchHardware(this@JoyMouseService)                    // hvert 10. sekund (bare med bilens lys på)
             main.postDelayed(this, 10_000)
         }

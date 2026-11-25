@@ -236,13 +236,9 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
                 context.prefs().edit().putInt("brightNight", night[it]).apply(); Brightness.preview(context, night[it])
             }
             val after = intArrayOf(30, 45, 60, 75, 90, 120)
-            choice("Night after sunset", "Always the night level from this long after sunset until sunrise",
+            choice("Dusk and dawn", "After sunset the light glides evenly down to the night level over this time, and up again the same time before sunrise. In daylight the car's lights dim it (tunnels)",
                 after.map { "$it min" }, after.indexOf(Brightness.nightAfter(context)).let { if (it < 0) 0 else it }) {
                 context.prefs().edit().putInt("brightNightAfter", after[it]).apply(); Brightness.tick(context)
-            }
-            choice("Car lights after sunset", "Before that time the car's lights can switch to the night level (dusk, tunnels)",
-                listOf("Dim right away", "Ignore"), if (Brightness.lightsAfterSunset(context)) 0 else 1) {
-                context.prefs().edit().putBoolean("brightLightsAfterSunset", it == 0).apply(); Brightness.tick(context)
             }
         }
         choice("Car's start screen", "When the car is switched on, show the car's own start screen this long before CarLink",
