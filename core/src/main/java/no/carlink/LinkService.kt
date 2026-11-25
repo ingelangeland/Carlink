@@ -203,6 +203,8 @@ class LinkService : Service() {
                 // Bilen kom tilbake innen 2 min: bare fortsett
                 if (auto && mode == "sender" && job?.isActive == true) {
                     if (!Hub.connected.value) setStatus("Waiting for the screen …")
+                    ConnTimeline.mark("CarLink already running")
+                    phoneNetMark()
                     return START_STICKY
                 }
                 autoStarted = auto
@@ -352,18 +354,7 @@ class LinkService : Service() {
         if (!autoStarted) ConnTimeline.start("started from the app")
         ConnTimeline.mark("CarLink running")
         // Når har telefonen en Wi-Fi-/hotspot-adresse skjermen kan nå?
-        launch {
-            var waited = 0
-            while (isActive && waited < 120_000 && !Hub.connected.value) {
-                val names = runCatching { NetworkInterface.getNetworkInterfaces().toList()
-                    .filter { it.isUp && it.inetAddresses.toList().any { a -> a is Inet4Address && !a.isLoopbackAddress } }
-                    .map { it.name } }.getOrDefault(emptyList())
-                val ap = names.firstOrNull { it.startsWith("ap") || it.startsWith("swlan") || it.startsWith("softap") || it == "wlan1" }
-                if (ap != null) { ConnTimeline.mark("hotspot ready ($ap)"); break }
-                if (names.any { it.startsWith("wlan") }) { ConnTimeline.mark("phone network ready (${names.joinToString(",")})"); break }
-                delay(500); waited += 500
-            }
-        }
+        phoneNetMark()
         var hs: JSONObject? = null
         if (useHotspot) {
             setStatus("Starting direct Wi-Fi …")
@@ -388,6 +379,23 @@ class LinkService : Service() {
             Hub.connected.value = false
             if (isActive) setStatus(if (triggersUp.isEmpty() && autoStarted) "Car disconnected – CarLink will stop shortly"
                                      else "Disconnected – waiting for the screen …")
+        }
+    }
+
+    /** Telefonen: når har den en Wi-Fi-/hotspot-adresse skjermen kan nå? (i tidslinjen) */
+    private fun phoneNetMark() {
+        scope.launch {
+            var waited = 0
+            while (isActive && waited < 120_000 && !Hub.connected.value) {
+                val names = runCatching { NetworkInterface.getNetworkInterfaces().toList()
+                    .filter { it.isUp && it.inetAddresses.toList().any { a -> a is Inet4Address && !a.isLoopbackAddress } }
+                    .map { it.name } }.getOrDefault(emptyList())
+                val ap = names.firstOrNull { it.startsWith("ap") || it.startsWith("swlan") || it.startsWith("softap") || it == "wlan1" }
+                if (ap != null) { ConnTimeline.mark("hotspot ready ($ap)"); break }
+                if (names.any { it.startsWith("wlan") }) { ConnTimeline.mark("phone network ready (${names.joinToString(",")})"); break }
+                if (waited == 0) ConnTimeline.mark("no hotspot/Wi-Fi yet (${names.joinToString(",").ifBlank { "only mobile data" }})")
+                delay(500); waited += 500
+            }
         }
     }
 
@@ -589,7 +597,7 @@ class LinkService : Service() {
         val wm = applicationContext.getSystemService(WifiManager::class.java) ?: return
         while (coroutineContext.isActive) {
             while (coroutineContext.isActive && (Hub.parked.value || !getSystemService(PowerManager::class.java).isInteractive)) delay(2000)
-            var last = ""; var kicked = false
+            var last = ""; var seen = false; var lastKick = -10_000L; var kicks = 0
             val t0 = android.os.SystemClock.elapsedRealtime()
             while (coroutineContext.isActive && !Hub.connected.value && android.os.SystemClock.elapsedRealtime() - t0 < 90_000) {
                 @Suppress("DEPRECATION")
@@ -606,21 +614,33 @@ class LinkService : Service() {
                     }
                 }
                 if (st != last) { ConnTimeline.mark(st); last = st }
-                // Etter 4 s uten at den har begynt å koble til: be den lete og koble til med en gang (root)
-                if (!kicked && android.os.SystemClock.elapsedRealtime() - t0 > 4000 &&
-                    st in setOf("Wi-Fi off", "Wi-Fi on, not connected", "Wi-Fi searching")) {
-                    kicked = true
-                    ConnTimeline.mark("asked Wi-Fi to connect now")
-                    withContext(Dispatchers.IO) {
-                        runCatching {
-                            val p = ProcessBuilder("su", "-c", "svc wifi enable; wpa_cli -i wlan0 reconnect >/dev/null 2>&1 || " +
-                                "wpa_cli -p /data/vendor/wifi/wpa/sockets -i wlan0 reconnect >/dev/null 2>&1; " +
-                                "cmd wifi start-scan >/dev/null 2>&1").redirectErrorStream(true).start()
-                            p.inputStream.bufferedReader().readText(); p.waitFor()
-                        }
-                    }
+                // Er hotspoten (sist brukte nett) synlig i Wi-Fi-søket ennå?
+                val ssid = prefs().getString("hotspotSsid", null)
+                if (ssid != null && !seen) {
+                    @Suppress("DEPRECATION")
+                    val hit = runCatching { wm.scanResults }.getOrNull()?.firstOrNull { it.SSID == ssid }
+                    if (hit != null) { seen = true; ConnTimeline.mark("hotspot visible (${if (hit.frequency > 4000) "5 GHz" else "2.4 GHz"}, ${hit.level} dBm)") }
                 }
-                if (st == "Wi-Fi has an address") break
+                // Ikke i gang med å koble til: be Wi-Fi lete og koble til med en gang (root) – etter 1,5 s og så hvert 5. s
+                val el = android.os.SystemClock.elapsedRealtime() - t0
+                if (el > 1500 && el - lastKick > 5000 && kicks < 6 &&
+                    st in setOf("Wi-Fi off", "Wi-Fi on, not connected", "Wi-Fi searching")) {
+                    lastKick = el; kicks++
+                    val out = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val p = ProcessBuilder("su", "-c", "svc wifi enable; " +
+                                "(wpa_cli -i wlan0 scan; wpa_cli -i wlan0 reconnect) 2>&1 | tr '\\n' ' ' || true; " +
+                                "cmd wifi start-scan 2>&1 | head -1").redirectErrorStream(true).start()
+                            val t = p.inputStream.bufferedReader().readText(); p.waitFor(); t.trim().take(80)
+                        }.getOrDefault("failed")
+                    }
+                    ConnTimeline.mark("asked Wi-Fi to search and connect (#$kicks: ${out.ifBlank { "ok" }})")
+                }
+                if (st == "Wi-Fi has an address") {
+                    @Suppress("DEPRECATION")
+                    wm.connectionInfo?.ssid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }?.let { prefs().edit().putString("hotspotSsid", it).apply() }
+                    break
+                }
                 delay(300)
             }
             // Vent til forbindelsen har vært oppe og falt igjen, og skjermen er på (ikke i hvile), før neste runde
