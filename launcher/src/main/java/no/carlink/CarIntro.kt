@@ -16,7 +16,12 @@ object CarIntro {
         private set
     val choices = intArrayOf(0, 2, 4, 6, 8)
 
-    fun seconds(ctx: Context) = ctx.prefs().getInt("introSecs", 4)
+    /** Av som standard (CarLink rett på skjermen). Tidligere valg nullstilles én gang. */
+    fun seconds(ctx: Context): Int {
+        val p = ctx.prefs()
+        if (!p.getBoolean("introReset1", false)) p.edit().putBoolean("introReset1", true).putInt("introSecs", 0).apply()
+        return p.getInt("introSecs", 0)
+    }
 
     /**
      * Bilens eget system står på skjermen ved oppstart (det skjer bare når bilen slås på): la det stå

@@ -170,7 +170,7 @@ class JoyMouseService : AccessibilityService() {
     fun frontPackage(): String? = currentPkg ?: frontPkg()
     private fun frontPkg(): String? = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
 
-    private fun startupCarSystem(delayMs0: Long = 4000) {
+    private fun startupCarSystem(delayMs0: Long = 500) {
         if (!justStarted() || !prefs().getBoolean("replaceFactoryHome", true)) return
         if (SystemClock.elapsedRealtime() < allowCarUntil) return
         // Bilens startbilde: la det stå valgt tid (bare første gang etter oppstart)

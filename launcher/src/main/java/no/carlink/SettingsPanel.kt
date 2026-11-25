@@ -281,7 +281,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
             }
             "Car screen" -> {
                 choice("Car's start screen", "When the car is switched on, show the car's own start screen this long before CarLink",
-                    CarIntro.choices.map { if (it == 0) "Off" else "$it s" }, CarIntro.choices.indexOf(CarIntro.seconds(context)).let { if (it < 0) 2 else it }) {
+                    CarIntro.choices.map { if (it == 0) "Off" else "$it s" }, CarIntro.choices.indexOf(CarIntro.seconds(context)).let { if (it < 0) 0 else it }) {
                     context.prefs().edit().putInt("introSecs", CarIntro.choices[it]).apply()
                 }
                 // Bilskjermens eget klimapanel (dukker opp ved endringer i klimaanlegget). Dør-varselet er en egen innstilling og røres ikke.
