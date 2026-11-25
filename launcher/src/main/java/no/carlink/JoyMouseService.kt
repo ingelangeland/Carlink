@@ -102,7 +102,7 @@ class JoyMouseService : AccessibilityService() {
             // Bilskjermen stopper CarLink når bilen slås av, og noe starter det igjen litt etter.
             // Står hvileskjermen da, er bilen av: slipp alt.
             if (front == SCREEN_SAVER) setParked(true)
-            if (front == CAR_SYSTEM) startupCarSystem(delayMs = 500)
+            if (front == CAR_SYSTEM) startupCarSystem(delayMs0 = 500)
             else if (front != null && front in otherHomes) otherHomeShown(front)
         }, 1200)
         runCatching {
