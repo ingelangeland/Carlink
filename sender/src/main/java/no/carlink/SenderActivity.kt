@@ -119,6 +119,17 @@ class SenderActivity : AppCompatActivity() {
         bgLocBtn = pill("Allow location \"all the time\" (map when CarLink starts by itself)") { askBgLoc() }
         col.addView(bgLocBtn, wrap(8))
         col.addView(CheckBox(this).apply {
+            text = "Share the phone's music with the car (what's playing, cover, controls and sound)"
+            setTextColor(C.TEXT); textSize = 13f
+            buttonTintList = ColorStateList.valueOf(C.ACCENT)
+            isChecked = prefs().getBoolean("shareMusic", true)
+            setOnCheckedChangeListener { _, c ->
+                prefs().edit().putBoolean("shareMusic", c).apply()
+                Hub.shareMusic.value = c
+                AppLog.i("music", if (c) "sharing the phone's music with the car" else "not sharing the phone's music with the car")
+            }
+        }, wrap(6))
+        col.addView(CheckBox(this).apply {
             text = "Ask about audio over Wi-Fi when CarLink starts by itself (notification)"
             setTextColor(C.TEXT); textSize = 13f
             buttonTintList = ColorStateList.valueOf(C.ACCENT)

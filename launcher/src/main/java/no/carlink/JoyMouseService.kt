@@ -173,6 +173,8 @@ class JoyMouseService : AccessibilityService() {
         if (SystemClock.elapsedRealtime() < allowCarUntil) return
         main.postDelayed({
             if (SystemClock.elapsedRealtime() < Hub.introUntil) return@postDelayed   // bilens startbilde vises med vilje
+            // CarLinks skjerm har ikke rukket å bestemme om startbildet skal vises: vent litt, ikke vis CarLink midt i
+            if (CarIntro.seconds(this) > 0 && !CarIntro.checked && delayMs < 6000) { startupCarSystem(delayMs + 1000); return@postDelayed }
             if (currentPkg == CAR_SYSTEM && SystemClock.elapsedRealtime() >= allowCarUntil) {
                 AppLog.i("app", "car system at startup – showing CarLink")
                 runCatching {

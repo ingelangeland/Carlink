@@ -635,11 +635,23 @@ class LinkService : Service() {
                 if (el > 1500 && el - lastKick > 5000 && kicks < 6 &&
                     st in setOf("Wi-Fi off", "Wi-Fi on, not connected", "Wi-Fi searching")) {
                     lastKick = el; kicks++
+                    // Be Android selv koble til hotspoten (lov for apper på denne Android-versjonen)
+                    val hsSsid = prefs().getString("hotspotSsid", null)
+                    val netNote = runCatching {
+                        @Suppress("DEPRECATION")
+                        val cfg = wm.configuredNetworks?.firstOrNull { it.SSID?.trim('"') == hsSsid }
+                        if (cfg == null) "no saved network" else {
+                            @Suppress("DEPRECATION") val a = wm.enableNetwork(cfg.networkId, true)
+                            @Suppress("DEPRECATION") val b = wm.reconnect()
+                            @Suppress("DEPRECATION") wm.startScan()
+                            "android connect ${if (a && b) "ok" else "refused"}"
+                        }
+                    }.getOrElse { "android connect: ${it.javaClass.simpleName}" }
                     val out = withContext(Dispatchers.IO) {
                         rootSh("svc wifi enable\n(wpa_cli -i wlan0 scan; wpa_cli -i wlan0 reconnect) 2>&1 | tr '\\n' ' '\n" +
                             "cmd wifi start-scan 2>&1 | head -1").trim().take(80)
                     }
-                    ConnTimeline.mark("asked Wi-Fi to search and connect (#$kicks: ${out.ifBlank { "ok" }})")
+                    ConnTimeline.mark("asked Wi-Fi to search and connect (#$kicks: $netNote; ${out.replace("Unknown command: start-scan", "").trim().ifBlank { "ok" }})")
                 }
                 if (st == "Wi-Fi has an address") {
                     @Suppress("DEPRECATION")
@@ -787,6 +799,7 @@ class LinkService : Service() {
                 // Musikk på skjermen sist: start samme app (åpnes et øyeblikk hvis bilskjermen har lukket den)
                 val pkg = prefs().getString("resumePkg", null)
                 if (Hub.localMedia.value?.playing == true) Unit
+                else if (prefs().getBoolean("resumeUserPaused", false)) AppLog.i("music", "no resume (phone connected): you had paused the music")
                 else if (pkg != null) LocalResume.resumeNow(this@LinkService, pkg, "phone connected") else AutoPlay.resume(this@LinkService)
             }, 1500)
         }
@@ -805,6 +818,7 @@ class LinkService : Service() {
         } else null
         val feedJob = if (isSender) launch(Dispatchers.Main) { senderFeeds() } else null
         if (isSender) startAudioIfReady()
+        val shareJob = if (isSender) launch { Hub.shareMusic.collect { on -> if (!on) audioJob?.cancel() else startAudioIfReady() } } else null
 
         try {
             val r = sock.getInputStream().bufferedReader()
@@ -826,7 +840,7 @@ class LinkService : Service() {
             holdLocks(false)
             keysJob?.cancel()
             if (!isSender) main.post { MediaKeys.stop() }
-            feedJob?.cancel(); pingJob.cancel(); writerJob.cancel(); parkJob?.cancel()
+            feedJob?.cancel(); pingJob.cancel(); writerJob.cancel(); parkJob?.cancel(); shareJob?.cancel()
             out.close()
             close(sock)
         }
@@ -842,12 +856,12 @@ class LinkService : Service() {
                 // Bilskjermen bruker telefonens tidssone (den var satt til Kina fra fabrikken)
                 if (!isSender) o.optString("tz").takeIf { it.isNotBlank() }?.let { TimeZoneSync.apply(this, it) }
             }
-            "cmd" -> if (isSender) MediaListener.control(o.optString("a"))
+            "cmd" -> if (isSender && Hub.shareMusic.value) MediaListener.control(o.optString("a"))
             "timeline" -> if (isSender) o.optJSONArray("steps")?.let { ConnTimeline.logRemote(o.optString("start"), it) }
             "joylog" -> if (isSender) JoyLog.received(this, o.optString("name", "CarLink-joystick.txt"), o.optString("text"))
             "cfg" -> if (isSender) {
                 peerAutoPlay = o.optBoolean("autoPlay", false)
-                if (peerAutoPlay && o.optString("last") == "phone") main.postDelayed({ AutoPlay.resume(this) }, 1500)
+                if (peerAutoPlay && o.optString("last") == "phone" && Hub.shareMusic.value) main.postDelayed({ AutoPlay.resume(this) }, 1500)
             }
             "media" -> if (!isSender) {
                 Hub.remoteMedia.value = if (o.optBoolean("none")) null else Protocol.parseMedia(o, Hub.remoteMedia.value)
@@ -867,9 +881,11 @@ class LinkService : Service() {
     @SuppressLint("MissingPermission")
     private suspend fun CoroutineScope.senderFeeds() {
         var lastArt = Int.MIN_VALUE
+        Hub.shareMusic.value = prefs().getBoolean("shareMusic", true)
         launch {
-            Hub.localMedia.collect { m ->
+            kotlinx.coroutines.flow.combine(Hub.localMedia, Hub.shareMusic) { m, share -> if (share) m else null }.collect { m ->
                 if (m == null) {
+                    lastArt = Int.MIN_VALUE
                     Hub.send(JSONObject().put("t", "media").put("none", true))
                 } else {
                     val withArt = m.artId != lastArt
@@ -890,7 +906,7 @@ class LinkService : Service() {
         launch {
             while (isActive) {
                 delay(10_000)
-                Hub.localMedia.value?.let { Hub.send(Protocol.media(it, false)) }
+                if (Hub.shareMusic.value) Hub.localMedia.value?.let { Hub.send(Protocol.media(it, false)) }
             }
         }
 
@@ -953,7 +969,7 @@ class LinkService : Service() {
     }
 
     private fun startAudioIfReady() {
-        if (projection == null || !Hub.connected.value || audioJob?.isActive == true) return
+        if (projection == null || !Hub.connected.value || audioJob?.isActive == true || !Hub.shareMusic.value) return
         if (Build.VERSION.SDK_INT >= 29) {
             val cap = audioThread("carlink-capture", android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
             val net = audioThread("carlink-send", android.os.Process.THREAD_PRIORITY_AUDIO)

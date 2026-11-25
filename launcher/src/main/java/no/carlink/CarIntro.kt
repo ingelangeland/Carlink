@@ -12,7 +12,8 @@ import android.os.SystemClock
  */
 object CarIntro {
     private val main = Handler(Looper.getMainLooper())
-    private var checked = false
+    @Volatile var checked = false
+        private set
     val choices = intArrayOf(0, 2, 4, 6, 8)
 
     fun seconds(ctx: Context) = ctx.prefs().getInt("introSecs", 4)
@@ -26,7 +27,7 @@ object CarIntro {
         // Bare når bilen nettopp ble slått på / skjermen startet: CarLink har ikke levd det siste minuttet.
         // (Ikke etter en oppdatering av appen mens du kjører.)
         val aliveAt = ctx.prefs().getLong("resumeAliveAt", 0)
-        if (aliveAt > 0 && System.currentTimeMillis() - aliveAt < 25_000) {
+        if (aliveAt > 0 && System.currentTimeMillis() - aliveAt < 60_000) {
             AppLog.i("app", "start screen skipped: CarLink was running ${(System.currentTimeMillis() - aliveAt) / 1000} s ago (app restart, not the car)")
             return
         }
