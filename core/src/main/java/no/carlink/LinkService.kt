@@ -349,6 +349,21 @@ class LinkService : Service() {
      */
     @SuppressLint("MissingPermission")
     private suspend fun senderLoop(address: String?, useHotspot: Boolean) = coroutineScope {
+        if (!autoStarted) ConnTimeline.start("started from the app")
+        ConnTimeline.mark("CarLink running")
+        // Når har telefonen en Wi-Fi-/hotspot-adresse skjermen kan nå?
+        launch {
+            var waited = 0
+            while (isActive && waited < 120_000 && !Hub.connected.value) {
+                val names = runCatching { NetworkInterface.getNetworkInterfaces().toList()
+                    .filter { it.isUp && it.inetAddresses.toList().any { a -> a is Inet4Address && !a.isLoopbackAddress } }
+                    .map { it.name } }.getOrDefault(emptyList())
+                val ap = names.firstOrNull { it.startsWith("ap") || it.startsWith("swlan") || it.startsWith("softap") || it == "wlan1" }
+                if (ap != null) { ConnTimeline.mark("hotspot ready ($ap)"); break }
+                if (names.any { it.startsWith("wlan") }) { ConnTimeline.mark("phone on Wi-Fi"); break }
+                delay(500); waited += 500
+            }
+        }
         var hs: JSONObject? = null
         if (useHotspot) {
             setStatus("Starting direct Wi-Fi …")
@@ -402,6 +417,7 @@ class LinkService : Service() {
                     bt.connect()
                     val w = bt.outputStream.bufferedWriter()
                     w.write(msg.toString()); w.newLine(); w.flush()
+                    ConnTimeline.mark("told the screen over Bluetooth")
                     setStatus("Waiting for the screen to connect over Wi-Fi …")
                     val reply = bt.inputStream.bufferedReader().readLine()?.let { JSONObject(it) }
                     if (reply?.optString("t") == "busy") { delay(5000); continue }
@@ -418,6 +434,7 @@ class LinkService : Service() {
                 throw e
             } catch (e: Exception) {
                 fails++
+                ConnTimeline.mark("screen not reachable on Bluetooth (yet)")
                 if (!Hub.connected.value) setStatus("Screen not found via Bluetooth – also trying Wi-Fi …")
             }
             // Prøv sjeldnere når skjermen ikke svarer (sparer strøm)
@@ -485,6 +502,7 @@ class LinkService : Service() {
             }.collect { src -> if (src != null && src != prefs().getString("lastSource", null)) prefs().edit().putString("lastSource", src).apply() }
         }
         launch { LocalResume.track(this@LinkService) }
+        if (!Hub.connected.value) ConnTimeline.start("CarLink started on the screen")
         btAdapter()?.let { ad -> launch { btListenLoop(ad, incoming) } }
         launch { wifiProbeLoop(incoming) }
         setStatus("Waiting for the phone …")
@@ -515,6 +533,7 @@ class LinkService : Service() {
                 val reader = bt.inputStream.bufferedReader()
                 val writer = bt.outputStream.bufferedWriter()
                 val msg = JSONObject(reader.readLine() ?: throw IOException("Bluetooth closed"))
+                ConnTimeline.mark("phone called over Bluetooth")
                 if (rxBusy.get()) {
                     writer.write(JSONObject().put("t", "busy").toString()); writer.newLine(); writer.flush()
                     delay(300); close(bt); continue
@@ -568,6 +587,7 @@ class LinkService : Service() {
         val screenRx = object : android.content.BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) {
                 screenOn.value = i.action == Intent.ACTION_SCREEN_ON
+                if (screenOn.value && !Hub.connected.value) ConnTimeline.start("screen on")
                 LocalResume.screen(this@LinkService, screenOn.value)
             }
         }
@@ -599,6 +619,7 @@ class LinkService : Service() {
                         if (Build.VERSION.SDK_INT >= 30) (lp.dhcpServerAddress as? Inet4Address)?.let { candidates[it.hostAddress!!] = n }
                     }
                 } catch (_: Exception) {}
+                candidates.keys.firstOrNull()?.let { ConnTimeline.mark("on the phone's Wi-Fi (router $it)") }
                 prefs().getString("lastPhoneIp", null)?.let { if (it !in candidates) candidates[it] = null }
                 // Test på én enhet: Sender-appen installert på samme enhet
                 if (packageName != "no.carlink.sender" &&
@@ -666,6 +687,10 @@ class LinkService : Service() {
         }
         out.trySend(JSONObject().put("t", "hello").put("name", Build.MODEL)
             .put("tz", java.util.TimeZone.getDefault().id).toString())
+        ConnTimeline.finish(if (isSender) "connected to the screen" else "connected to the phone")?.let { steps ->
+            // Skjermen sender sin tidslinje til telefonen, så telefonens logg har begge sider
+            if (!isSender) out.trySend(JSONObject().put("t", "timeline").put("start", ConnTimeline.startReason()).put("steps", steps).toString())
+        }
         main.removeCallbacks(pauseLater)
         if (!isSender) {
             // Skjermen bestemmer: send valget til telefonen, og start musikken der den sist spilte
@@ -732,6 +757,7 @@ class LinkService : Service() {
                 if (!isSender) o.optString("tz").takeIf { it.isNotBlank() }?.let { TimeZoneSync.apply(this, it) }
             }
             "cmd" -> if (isSender) MediaListener.control(o.optString("a"))
+            "timeline" -> if (isSender) o.optJSONArray("steps")?.let { ConnTimeline.logRemote(o.optString("start"), it) }
             "joylog" -> if (isSender) JoyLog.received(this, o.optString("name", "CarLink-joystick.txt"), o.optString("text"))
             "cfg" -> if (isSender) {
                 peerAutoPlay = o.optBoolean("autoPlay", false)

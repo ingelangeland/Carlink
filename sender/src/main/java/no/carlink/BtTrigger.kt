@@ -21,7 +21,11 @@ class BtTrigger : BroadcastReceiver() {
         if (!p.getBoolean("auto", false)) return
         if (dev.address !in triggers(ctx)) return
         when (intent.action) {
-            BluetoothDevice.ACTION_ACL_CONNECTED -> runCatching { start(ctx, dev.address) }
+            BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                AppLog.init(ctx)
+                ConnTimeline.start("car Bluetooth connected (${runCatching { dev.name }.getOrNull() ?: dev.address})")
+                runCatching { start(ctx, dev.address) }
+            }
             BluetoothDevice.ACTION_ACL_DISCONNECTED ->
                 if (LinkService.senderRunning) runCatching { LinkService.triggerLost(ctx, dev.address) }
         }

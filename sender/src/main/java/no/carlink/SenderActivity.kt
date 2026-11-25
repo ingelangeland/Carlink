@@ -203,7 +203,10 @@ class SenderActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch { Hub.status.collect { statusTv.text = it } }
+                launch {
+                    kotlinx.coroutines.flow.combine(Hub.status, ConnTimeline.last) { s, t -> if (t != null) "$s · last connection took $t" else s }
+                        .collect { statusTv.text = it }
+                }
                 launch { Hub.connected.collect { statusTv.setTextColor(if (it) C.OK else C.SUB) } }
                 launch { Hub.localMedia.collect { renderMedia(it) } }
                 launch {
