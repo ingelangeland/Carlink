@@ -158,38 +158,68 @@ object LocalResume {
         // 2) Vent på internett (høyst 2 minutter), så spill – og sjekk at det faktisk spiller
         waitForInternet(ctx, SystemClock.elapsedRealtime(), minWaitMs = if (alive) 0 else 3500) { waited ->
             AppLog.i("music", "internet ready after ${waited / 1000} s – pressing play")
-            play(ctx, pkg)
-            retryPlay(ctx, pkg, 1)
+            val t0 = SystemClock.elapsedRealtime()
+            playLoop(ctx, pkg, Attempt(t0))
         }
     }
 
-    /** Sjekk hvert 2. sekund at det spiller; prøv igjen (vekselvis direkte og med play-knappen), høyst 12 ganger.
-     *  Etter en kald start (omstart av skjermen) har ikke YouTube Music lastet køen sin ennå og overser «play»
-     *  («player wasn't loaded»). Da åpnes appen og får stå fremme til den spiller, og vi sender «neste»,
-     *  som får den til å laste køen og begynne å spille. */
+    /**
+     * Får musikken i gang uten å vise appen hvis det går:
+     *  1) Vent til appen er klar (har en mediesesjon) – høyst 15 s.
+     *  2) Send play i bakgrunnen: med en gang den er klar, etter 2 s og etter 4 s.
+     *  3) Siste forsøk i bakgrunnen: «neste sang» etter 6 s (får YouTube Music til å laste køen).
+     *  4) Fortsatt stille etter 9 s: åpne appen på skjermen og prøv play derfra (høyst 20 s),
+     *     og gå tilbake til hjemmeskjermen så snart det spiller.
+     * Etter en vanlig standby er appen klar med en gang og spiller på første play.
+     */
+    private class Attempt(val start: Long) {
+        var readyAt = 0L; var opened = 0L; var lastSend = 0L; var step = 0
+    }
     private var openedForLoad = false
-    private fun retryPlay(ctx: Context, pkg: String, n: Int) {
-        main.postDelayed({
-            if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) {
-                AppLog.i("music", "$pkg is playing (after ${n * 2} s)"); backHome(ctx); return@postDelayed
+
+    private fun playLoop(ctx: Context, pkg: String, a: Attempt) {
+        val now = SystemClock.elapsedRealtime()
+        if (Hub.localMedia.value?.playing == true || Hub.remoteMedia.value?.playing == true) {
+            AppLog.i("music", "$pkg is playing (after ${(now - a.start) / 1000} s${if (a.opened > 0) ", app was shown" else ""})")
+            backHome(ctx); return
+        }
+        if (a.readyAt == 0L && MediaListener.hasSession(pkg)) {
+            a.readyAt = now
+            if (now - a.start > 500) AppLog.i("music", "$pkg is ready after ${(now - a.start) / 1000} s")
+        }
+        when {
+            a.opened > 0 -> {
+                if (now - a.opened > 20_000) { AppLog.i("music", "$pkg still not playing – giving up"); backHome(ctx); return }
+                if (now - a.lastSend >= 2000) { a.lastSend = now; play(ctx, pkg) }
             }
-            if (n >= 12) { AppLog.i("music", "$pkg still not playing after 24 s – giving up"); backHome(ctx); return@postDelayed }
-            when (n) {
-                2 -> {   // 4 s uten lyd: appen er nok ikke klar – åpne den og la den stå fremme
-                    ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { launch ->
-                        AppLog.i("music", "$pkg ignores play (cold start?) – opening it so it loads")
-                        openedForLoad = true
-                        runCatching { ctx.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)) }
+            a.readyAt == 0L -> {
+                // Ikke klar ennå: medieknappen kan vekke den; vent høyst 15 s før appen åpnes
+                if (now - a.start > 15_000) openApp(ctx, pkg, a, "never got ready")
+                else if (now - a.lastSend >= 3000) { a.lastSend = now; playButton(ctx, pkg) }
+            }
+            else -> {
+                val since = now - a.readyAt
+                when {
+                    a.step == 0 -> { a.step = 1; play(ctx, pkg) }
+                    a.step == 1 && since >= 2000 -> { a.step = 2; play(ctx, pkg) }
+                    a.step == 2 && since >= 4000 -> { a.step = 3; play(ctx, pkg) }
+                    a.step == 3 && since >= 6000 -> {
+                        a.step = 4
+                        if (MediaListener.controlPkg(pkg, "next")) AppLog.i("music", "next sent to $pkg (last try in the background)")
                     }
+                    a.step == 4 && since >= 9000 -> openApp(ctx, pkg, a, "ignores play and next")
                 }
-                4, 7, 10 -> {
-                    if (MediaListener.controlPkg(pkg, "next")) AppLog.i("music", "next sent to $pkg to make it load")
-                    else play(ctx, pkg)
-                }
-                else -> if (n % 2 == 1) play(ctx, pkg) else playButton(ctx, pkg)
             }
-            retryPlay(ctx, pkg, n + 1)
-        }, 2000)
+        }
+        main.postDelayed({ playLoop(ctx, pkg, a) }, 500)
+    }
+
+    private fun openApp(ctx: Context, pkg: String, a: Attempt, why: String) {
+        a.opened = SystemClock.elapsedRealtime(); a.lastSend = a.opened
+        val launch = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: return
+        AppLog.i("music", "$pkg $why – opening it so it loads")
+        openedForLoad = true
+        runCatching { ctx.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)) }
     }
 
     /** Lukk appen vi åpnet for å få den til å laste, og gå tilbake til hjemmeskjermen. */
@@ -201,7 +231,7 @@ object LocalResume {
                 ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION))
             }
-        }, 1500)
+        }, 500)
     }
 
     private fun play(ctx: Context, pkg: String) {

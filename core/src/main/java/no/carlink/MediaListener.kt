@@ -31,6 +31,10 @@ class MediaListener : NotificationListenerService() {
         fun control(action: String) { Handler(Looper.getMainLooper()).post { instance?.doControl(action) } }
         /** Styr akkurat denne appen (ikke bare den som er valgt nå). Gir false hvis appen ikke har noen aktiv økt. */
         fun controlPkg(pkg: String, action: String): Boolean = instance?.doControlPkg(pkg, action) ?: false
+        /** Har appen en aktiv mediesesjon (er den klar til å ta imot play)? */
+        fun hasSession(pkg: String): Boolean = instance?.let { l ->
+            runCatching { l.msm?.getActiveSessions(l.cn())?.any { it.packageName == pkg } }.getOrNull()
+        } ?: false
         const val MAPS_PKG = "com.google.android.apps.maps"
         fun isEnabled(ctx: Context) = NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName)
     }
