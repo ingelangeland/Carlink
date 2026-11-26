@@ -92,7 +92,7 @@ class JoyMouseService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
-        AppLog.init(this); AppLog.i("joystick", "mouse service connected")
+        AppLog.init(this); AppLog.i("joystick", "mouse service connected"); Perf.startup("mouse service connected")
         learn = JoyLearn(this)
         DayNight.onSystem(this, resources.configuration)
         main.postDelayed(brightTick, 3000)
@@ -208,6 +208,7 @@ class JoyMouseService : AccessibilityService() {
     private fun setParked(on: Boolean) {
         if (Hub.parked.value == on) return
         Hub.parked.value = on
+        Perf.paused = on
         if (on) {
             AppLog.i("app", "car off – CarLink is resting (joystick, guard, light and phone search paused)")
             stop(); stopGuard()

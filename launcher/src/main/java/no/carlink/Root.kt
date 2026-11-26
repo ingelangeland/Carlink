@@ -4,7 +4,10 @@ import java.util.concurrent.TimeUnit
 
 /** Kommandoer med root på bilskjermen («su -c sh» og kommandoene på standard inn). */
 object Root {
-    fun run(script: String, timeoutS: Long = 8): String? = runCatching {
+    fun run(script: String, timeoutS: Long = 8): String? =
+        Perf.timed("root", "command «${script.lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(60)}»", 3000) { exec(script, timeoutS) }
+
+    private fun exec(script: String, timeoutS: Long): String? = runCatching {
         val p = ProcessBuilder("su", "-c", "sh").redirectErrorStream(true).start()
         // Utdata leses samtidig, ellers kan store svar (f.eks. logg) stoppe kommandoen
         val out = StringBuilder()

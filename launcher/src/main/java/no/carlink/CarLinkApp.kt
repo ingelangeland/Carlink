@@ -6,9 +6,11 @@ import org.osmdroid.config.Configuration
 class CarLinkApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        AppLog.init(this)
+        Perf.startup("app process ready")
+        Perf.startWatchdog()
         Configuration.getInstance().load(this, prefs())
         Configuration.getInstance().userAgentValue = packageName
-        AppLog.init(this)
         // Bilskjermen tvangsavslutter CarLink når bilen slås av; Android starter den igjen kort etter
         // (musikk-lytteren). Få musestyringen og oppstartsvakten i gang med en gang, før bilen slås på.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ SystemFix.healJoystick(this) }, 500)
@@ -19,5 +21,6 @@ class CarLinkApp : Application() {
         Hub.frontApp = { JoyMouseService.instance?.frontPackage() }
         AppCatalog.start(this)
         Updater.apkName = "CarLink-bilskjerm.apk"
+        Perf.startup("app setup done")
     }
 }

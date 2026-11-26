@@ -18,7 +18,9 @@ object JoyLog {
 
     fun received(ctx: Context, name: String, text: String) {
         if (text.isBlank()) return
-        runCatching { file(ctx).writeText(text) }.onFailure { return }
+        // Logg fra skjermen: legg til telefonens egen logg, så begge sider av tilkoblingen er med i samme fil
+        val full = if (name.startsWith("CarLink-log-")) text + "\n\n## Phone log (last days)\n" + AppLog.dumpAll(1_500_000) else text
+        runCatching { file(ctx).writeText(full) }.onFailure { return }
         val pi = PendingIntent.getActivity(ctx, 5, shareIntent(ctx), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val nm = ctx.getSystemService(NotificationManager::class.java)
         runCatching {

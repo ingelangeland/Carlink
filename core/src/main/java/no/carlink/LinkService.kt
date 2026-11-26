@@ -185,6 +185,7 @@ class LinkService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         AppLog.init(this)
+        Perf.startup("connection service started")
         when (intent?.action) {
             ACTION_STOP -> { shutdown(); stopSelf(); return START_NOT_STICKY }
             ACTION_AUDIO_START -> {
@@ -783,6 +784,8 @@ class LinkService : Service() {
 
     private suspend fun runSession(sock: Socket, isSender: Boolean) = coroutineScope {
         track(sock)
+        val sessionStart = SystemClock.elapsedRealtime()
+        var endReason: String? = null
         sessionPeer = sock.inetAddress
         holdLocks(true)
         sock.tcpNoDelay = true
@@ -828,6 +831,7 @@ class LinkService : Service() {
         val parkJob = if (!isSender) launch {
             Hub.parked.first { it }
             AppLog.i("link", "car off – closing the phone connection")
+            endReason = "car switched off"
             close(sock)
         } else null
         val feedJob = if (isSender) launch(Dispatchers.Main) { senderFeeds() } else null
@@ -842,8 +846,15 @@ class LinkService : Service() {
                 // En feil i én melding skal aldri bryte forbindelsen
                 runCatching { handle(o, isSender) }
             }
-        } catch (_: IOException) {
+            if (endReason == null) endReason = if (isActive) "the ${if (isSender) "screen" else "phone"} closed it" else "CarLink stopped it"
+        } catch (e: IOException) {
+            if (endReason == null) endReason = when (e) {
+                is java.net.SocketTimeoutException -> "no answer for 20 s (Wi-Fi lost?)"
+                else -> "network error: ${e.message ?: e.javaClass.simpleName}"
+            }
         } finally {
+            val mins = (SystemClock.elapsedRealtime() - sessionStart) / 60_000.0
+            AppLog.i("link", "connection ended after ${String.format(java.util.Locale("nb", "NO"), "%.1f", mins)} min: ${endReason ?: "CarLink stopped it"}")
             Hub.sender = null
             Hub.connected.value = false
             Hub.remoteMedia.value = null

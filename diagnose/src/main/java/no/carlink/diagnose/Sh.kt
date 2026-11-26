@@ -38,8 +38,8 @@ object CarLinkData {
         return out
     }
 
-    /** CarLinks egen logg (de siste ca. 1500 linjene). */
-    fun log(): List<String> = Sh.run("cat $DIR/files/carlink-log.txt 2>/dev/null", 10).lines()
+    /** CarLinks egen logg (de siste 3000 linjene; én fil per dag i files/logs, den gamle fila hvis den finnes). */
+    fun log(): List<String> = Sh.run("cat $DIR/files/carlink-log.txt $DIR/files/logs/carlink-*.txt 2>/dev/null | tail -n 3000", 10).lines()
 
     private fun unescape(s: String) = s.replace("&quot;", "\"").replace("&apos;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 }

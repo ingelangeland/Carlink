@@ -85,7 +85,11 @@ class SenderActivity : AppCompatActivity() {
         joyBtn = pill("Share the latest report from the car", C.ACCENT) { runCatching { startActivity(JoyLog.shareIntent(this)) } }
         col.addView(joyBtn, wrap(10))
         col.addView(pill("Share the phone's CarLink log", C.ACCENT) {
-            runCatching { AppLog.saveNow(); JoyLog.received(this, "CarLink-phone-log.txt", AppLog.dump()); startActivity(JoyLog.shareIntent(this)) }
+            // Flere dagers logg leses fra fil i bakgrunnen, så knappen ikke henger
+            Thread {
+                runCatching { JoyLog.received(this, "CarLink-phone-log.txt", AppLog.dumpAll(2_500_000)) }
+                runOnUiThread { runCatching { startActivity(JoyLog.shareIntent(this)) } }
+            }.start()
         }, wrap(10))
 
         col.section("1 · Access to music and navigation")

@@ -167,8 +167,19 @@ class ReceiverActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLog.init(this)
+        Perf.startup("home screen opening")
         SystemFix.apply(this)
         CarIntro.maybeShow(this)
+        // Til loggen: hva som vises når noe hakker, og når første bilde er tegnet
+        Perf.where = { uiState() }
+        Perf.watchFrames(this)
+        window.decorView.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                window.decorView.viewTreeObserver.removeOnPreDrawListener(this)
+                android.view.Choreographer.getInstance().postFrameCallback { Perf.startupFinished("first picture on the screen") }
+                return true
+            }
+        })
         DebugFlags.noVisualizer = intent?.getBooleanExtra("noviz", false) == true
         DebugFlags.noArt = intent?.getBooleanExtra("noart", false) == true
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -228,12 +239,12 @@ class ReceiverActivity : AppCompatActivity() {
         home = HomeView(this, object : HomeView.Actions {
             override fun openMap() = setLayout(listOf(PaneType.MAP))
             override fun openMusic() = setLayout(listOf(PaneType.MUSIC))
-            override fun openApps() = drawer.open()
+            override fun openApps() { drawer.open(); AppLog.i("ui", "app drawer opened") }
             override fun openSplit() {
                 if (panes.size < 2) setLayout(listOf(PaneType.MAP, PaneType.MUSIC, PaneType.APPS)) else showSplit()
             }
             override fun openSettings() = showSettings()
-            override fun openRecents() = recents.open()
+            override fun openRecents() { recents.open(); AppLog.i("ui", "app switcher opened") }
             override fun screenOff() {
                 val svc = JoyMouseService.instance
                 if (svc != null) svc.blackout(true) else blackoutHere()
@@ -411,6 +422,23 @@ class ReceiverActivity : AppCompatActivity() {
 
     private var lastWeights: FloatArray? = null
 
+    /** Hva som vises nå, med vanlige ord (til loggen når noe hakker). Kan leses fra andre tråder. */
+    private fun uiState(): String = runCatching {
+        val base = if (::home.isInitialized && home.visibility == View.VISIBLE) "home"
+            else "split view " + panes.toList().joinToString("+") { it.name.lowercase() }
+        val open = listOfNotNull(
+            "settings".takeIf { ::settings.isInitialized && settings.isOpen },
+            "app drawer".takeIf { ::drawer.isInitialized && drawer.isOpen },
+            "app switcher".takeIf { ::recents.isInitialized && recents.isOpen })
+        base + open.joinToString("") { ", $it open" }
+    }.getOrDefault("")
+
+    private var lastUi = ""
+    private fun logUi() {
+        val s = uiState()
+        if (s != lastUi) { lastUi = s; AppLog.i("ui", s) }
+    }
+
     private fun showHome() {
         home.visibility = View.VISIBLE
         // Panelene (kart m.m.) fjernes helt mens hjemmeskjermen vises → ingen kart/GPS i bakgrunnen
@@ -418,6 +446,7 @@ class ReceiverActivity : AppCompatActivity() {
         split.visibility = View.GONE
         rail.visibility = View.GONE
         prefs().edit().putString("mode", "home").apply()
+        logUi()
     }
 
     private fun showSplit() {
@@ -426,6 +455,7 @@ class ReceiverActivity : AppCompatActivity() {
         split.visibility = View.VISIBLE
         rail.visibility = View.VISIBLE
         prefs().edit().putString("mode", "split").apply()
+        logUi()
     }
 
     /** Hjem-knappen på enheten tar deg alltid tilbake til hjemmeskjermen. */
@@ -472,7 +502,7 @@ class ReceiverActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------- innstillinger
 
-    private fun showSettings() = settings.open()
+    private fun showSettings() { settings.open(); AppLog.i("ui", "settings opened") }
 
     private val settingsHost = object : SettingsPanel.Host {
         override fun restartLink() { LinkService.startReceiver(this@ReceiverActivity, force = true) }

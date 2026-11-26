@@ -53,6 +53,9 @@ object SystemFix {
                 append("pm enable com.spd.home >/dev/null 2>&1\n")
                 if (!p.getBoolean("homesRestored", false)) append("pm enable com.android.launcher3 >/dev/null 2>&1\n")
                 append("pm set-home-activity $pkg/no.carlink.ReceiverActivity >/dev/null 2>&1\n")
+                // Større systemlogg (gjelder til neste omstart), så «Send log» dekker flere minutter enn i dag (40–75 s).
+                // Hovedloggen 4 MB, systemdelen 1 MB – plassen brukes bare etter hvert som loggen fylles.
+                append("logcat -b main -G 4M >/dev/null 2>&1; logcat -b system -G 1M >/dev/null 2>&1\n")
                 append("[ \"$(settings get system SETTING_LUNCH_FIRST_APP)\" = \"$pkg\" ] || { settings put system SETTING_LUNCH_FIRST_APP $pkg; echo LAUNCH_CHANGED; }\n")
                 if (p.getBoolean("hideSidePanel", false)) append("am stopservice -n $SIDE_PANEL >/dev/null 2>&1; pm disable $SIDE_PANEL >/dev/null 2>&1\n")
                 append("echo TOP; dumpsys activity activities | grep -m 2 mResumedActivity\n")

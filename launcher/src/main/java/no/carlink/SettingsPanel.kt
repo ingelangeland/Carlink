@@ -341,7 +341,7 @@ class SettingsPanel(ctx: Context, blurTarget: View, private val host: Host) : Gl
         action("Check for updates", null) { host.checkUpdates() }
         toggle("Check automatically", "Looks for a new version when CarLink starts and every 6 hours",
             Updater.autoCheck(context)) { context.prefs().edit().putBoolean("autoUpdate", it).apply() }
-        action("Send log to Claude", "What CarLink and the system did recently – sent to the phone, share it from there") { host.sendLog() }
+        action("Send log to Claude", "What CarLink did the last 7 days and the system recently – sent to the phone, share it from there") { host.sendLog() }
         // Diagnoseappen: installeres herfra første gang, kan så åpnes herfra
         val dv = DiagnoseLink.installedVersion(context)
         val dst = DiagnoseLink.status.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""

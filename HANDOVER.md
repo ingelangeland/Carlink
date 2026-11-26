@@ -8,21 +8,41 @@ and update «Open questions», then commit and push.
 Keep it short: decisions, findings and what is waiting for the owner – not a transcript.
 No secrets or personal details (the repo is public).
 
+## Decided plan (owner, 2026-11-26)
+Goal: every CarLink function gets learning like the joystick (small steps within fixed limits, can be
+reset), driven by the log, optimising until nothing more can be gained without hurting stability,
+performance or smoothness on screen.
+- **Order:** 1) better log (done, see Log) → 2) Wi-Fi connect time (learn the fastest join sequence) →
+  3) light/tunnel → then start-up, music, memory.
+- **Tunnel:** build **both** – GPS fix lost + car lights on, *and* a stored list of Norwegian road tunnels
+  (NVDB/OSM) so dimming can start at the tunnel mouth and work in long tunnels (no 3-min limit).
+  Today's rule (800a455) stays until then.
+- **Music resume:** must work for **whatever app played last** (mainly YouTube Music, also NRK Radio,
+  Tidal, maybe others). Remember the last app; per-app learning of what works to resume it.
+- **Steps:** one round per log / adb session from the owner, then a few days of testing. Changes in
+  different areas may go in the same round; within one area one change at a time. Each learner logs
+  what it changed so a bad step can be undone alone. How often: decided per session.
+- **«Fully optimised» register:** when an area is judged done, record it – a list here **and** its own
+  tab in **CarLink Diagnose**. It stays «done» until the owner's experience says otherwise.
+- **On/off options:** anything it is natural to switch on/off goes into CarLink's Settings where it fits
+  (directly, in an existing sub-menu, or a new sub-menu) – must be easy to find.
+- **Unused code:** remove it when sure it is unused and nothing else breaks.
+- **Tests:** yes to automatic tests on GitHub (log replay of rules + Android 9 emulator 1920×720), even
+  if CI takes a few minutes longer. Yes to keeping several days of log.
+
+## Fully optimised (keep until the owner reports otherwise)
+- (nothing yet)
+
 ## Open questions (waiting for the owner's answer)
-- **Tunnel detection** (proposed 2026-11-26, not built): (1) GPS fix lost + car lights on = tunnel
-  (phone GPS already reaches the screen), (2) map data – Norwegian road tunnels from Statens vegvesen
-  (NVDB) / OpenStreetMap stored on the screen, (3) both. Claude recommended starting with (1).
-  Today's rule (commit 800a455): daylight + car lights dims like a tunnel at most 3 min, and not when the
-  lights have been on most of the last 10 min (grey weather) or right after start.
 - **SIM / 4G**: owner inserted a SIM (PIN removed, screen restarted), «Mobile network» in Android
   Settings is still greyed out. Proposed: a read-only adb script for the PC folder (SIM state, operator,
   signal, airplane/mobile data, modem config in firmware `ro.baseband`, separate USB 4G module?), or a
   «Mobile network» section in CarLink Diagnose. Owner was asked which operator the SIM is from (for APN).
   Earlier logs: telephony stack runs (qcril, QtiGsmCdmaPhone, IMS), OUT_OF_SERVICE, rmnet_data0 exists.
-- **System log covers only 40–75 s** in «Send log» (logs sent right after start-up). Proposed: filter
-  noisy tags and/or bigger logcat buffer (`logcat -G 4M`). Not built.
-- **Automatic tests** proposed: replay events from the owner's logs against the rules (light, music
-  resume), plus an Android 9 emulator (1920×720) smoke test in CI, plus joystick recording replay. Not built.
+- **Waiting for the first log with the new logging** (a few days of normal driving, then «Send log to
+  Claude»). Check in it: start-up SUMMARY lines, «connection ended» reasons, «screen froze» /
+  «jerky screen» warnings, memory lines, how many minutes the system log now covers, and the
+  «busiest tags» list (silence the top noisy ones in `LogSender.QUIET`). Then step 2: Wi-Fi learning.
 
 ## Known problems not solved yet
 - **Scroll buttons sometimes jump to CarLink's home screen** (2026-11-25 23:03, three times while in
@@ -36,6 +56,16 @@ No secrets or personal details (the repo is public).
   next → playFromSearch("") → open the app only if the user isn't using the screen.
 
 ## Log (newest first)
+- **2026-11-26** (Claude Code) **Better log (step 1).** `AppLog`: one file per day in `files/logs/`, 7 days /
+  8 MB kept, new lines appended every 3 s (errors at once) on a background thread – before, up to 60 s were
+  lost when the vendor force-stops CarLink at ACC off. New `Perf` (core): start-up steps + «startup:
+  SUMMARY» (process start → first picture), «screen froze» (main thread blocked ≥0.7 s, with stack and
+  what was shown), «jerky screen» per minute (FrameMetrics, only when it happens), memory every 15 min,
+  Android low-memory callbacks, slow root commands (≥3 s). `ui:` lines for what is shown. Link: «connection
+  ended after X min: reason». Phone (Android 11+): why the previous run ended. «Send log»: CarLink log for
+  the last days (≤2.5 MB), memory now, more event types, busiest system-log tags, system log 20 000 lines;
+  logcat buffer raised at start (main 4 MB, system 1 MB). Phone adds its own log to the shared file.
+  Diagnose reads the new log files. Built locally (release) OK; not yet tested on the car screen.
 - **2026-11-26** (Claude Code, PC) Local build set up on the owner's PC without admin: Temurin JDK 17,
   Gradle 8.11.1 and Android SDK (platform 35, build-tools 35.0.0, platform-tools) under `%LOCALAPPDATA%`,
   `JAVA_HOME`/`ANDROID_HOME`/PATH set for the user. `gradle :launcher:assembleRelease :sender:assembleRelease
