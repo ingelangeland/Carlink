@@ -36,6 +36,10 @@ No secrets or personal details (the repo is public).
   next → playFromSearch("") → open the app only if the user isn't using the screen.
 
 ## Log (newest first)
+- **2026-11-26** (Claude Code, PC) Local build set up on the owner's PC without admin: Temurin JDK 17,
+  Gradle 8.11.1 and Android SDK (platform 35, build-tools 35.0.0, platform-tools) under `%LOCALAPPDATA%`,
+  `JAVA_HOME`/`ANDROID_HOME`/PATH set for the user. `gradle :launcher:assembleRelease :sender:assembleRelease
+  :diagnose:assembleRelease` builds all three APKs locally (~5 min first time).
 - **2026-11-26** Light: grey-weather rule above (800a455). CLAUDE.md and this file added.
   Home: max 4 favourites, menus in CarLink's own style (`CarMenu`, 129514f). Cover fallback from the media
   notification / art URI when the session has no bitmap; phone's connection notification is now silent
