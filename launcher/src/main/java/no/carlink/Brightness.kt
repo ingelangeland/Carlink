@@ -57,14 +57,14 @@ object Brightness {
 
     /**
      * Hvor mørkt skjermen skal være: 0 = dagnivå, 1 = nattnivå.
-     * - Sola oppe: dag. Slår bilens lys seg på (tunnel, kraftig uvær) → natt til lysene går av igjen.
+     * - Sola oppe: dag. Slår bilens lys seg på (tunnel) → natt, høyst 3 min; står de mye på (grått vær) → dag.
      * - Etter solnedgang: glir jevnt ned til natt over valgt tid. Før soloppgang: jevnt opp igjen.
      *   Regnes ut fra klokka, så det stemmer også når bilen slås på midt i overgangen.
      *   Bilens lys betyr ingenting her (de slår seg på automatisk i skumringen).
      */
     fun darkness(ctx: Context, now: Long = System.currentTimeMillis()): Double {
         val since = minutesSinceSunset(ctx, now)
-        if (since < 0) return if (carLights(ctx)) 1.0 else 0.0
+        if (since < 0) return if (tunnel(ctx)) 1.0 else 0.0
         val until = minutesUntilSunrise(ctx, now)
         return (minOf(since, until).toDouble() / nightAfter(ctx)).coerceIn(0.0, 1.0)
     }
@@ -96,11 +96,47 @@ object Brightness {
 
     fun isNight(ctx: Context): Boolean = darkness(ctx) >= 1.0
 
+    // ---- Bilens lys om dagen: kort tid på etter å ha vært av = tunnel (demp). Har lysene stått på
+    //      mesteparten av de siste 10 minuttene, eller i over 3 minutter i strekk, er det bare grått vær
+    //      (lysene slår seg på automatisk) – da holdes dagslyset.
+    private val lightsHist = ArrayDeque<Boolean>()   // én måling hvert 10. sekund, 10 minutter
+    private var lightsOnSince = -1L
+    private var lastLights = false
+
+    private fun noteLights(on: Boolean) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (on && !lastLights) lightsOnSince = now
+        if (!on) lightsOnSince = -1L
+        lastLights = on
+    }
+
+    private var lastSample = 0L
+    private fun sampleLights(ctx: Context) {
+        val on = carLights(ctx); noteLights(on)
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (lightsHist.isNotEmpty() && now - lastSample < 9_500) return
+        lastSample = now
+        lightsHist.addLast(on); while (lightsHist.size > 60) lightsHist.removeFirst()
+    }
+
+    private fun tunnel(ctx: Context): Boolean {
+        val on = carLights(ctx); noteLights(on)
+        if (!on) return false
+        val onFor = if (lightsOnSince < 0) 0L else android.os.SystemClock.elapsedRealtime() - lightsOnSince
+        if (onFor > 3 * 60_000) return false
+        // Andel av de siste 10 minuttene (før denne gangen) lysene sto på
+        val before = lightsHist.toList().dropLast((onFor / 10_000).toInt().coerceAtMost(lightsHist.size))
+        // Rett etter start (under ett minutt med målinger): lys på om dagen er nesten alltid grått vær
+        val share = if (before.size < 6) 1.0 else before.count { it }.toDouble() / before.size
+        return share < 0.5
+    }
+
     private fun phase(ctx: Context): String {
         val since = minutesSinceSunset(ctx)
         val d = darkness(ctx)
         return when {
             since < 0 && d >= 1.0 -> "dark (car lights on in daylight – tunnel?)"
+            since < 0 && carLights(ctx) -> "day (car lights on for a while – grey weather, not a tunnel)"
             since < 0 -> "day"
             d >= 1.0 -> "night"
             minutesUntilSunrise(ctx) < since -> "brightening before sunrise"
@@ -140,6 +176,7 @@ object Brightness {
     private var tookOver = false
 
     fun tick(ctx: Context) {
+        sampleLights(ctx)
         if (!enabled(ctx) || paused || android.os.SystemClock.uptimeMillis() < previewUntil) return
         if (!tookOver) { tookOver = true; takeOver(ctx, true) }
         val ph = phase(ctx)
