@@ -1,6 +1,9 @@
 # CarLink – notes for Claude
 
 Read this first. It is written for Claude Code sessions on the owner's Windows PC.
+Then read **HANDOVER.md**: what was decided and found in the owner's other Claude sessions, and what is
+waiting for an answer. Before you start: `git pull`. When you finish: add a short entry to HANDOVER.md,
+commit and push, so the other session sees it.
 
 ## The owner
 - Write to the owner in **Norwegian**, in plain language. The owner is not a programmer: explain what
